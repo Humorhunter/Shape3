@@ -1,0 +1,90 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #101014;
+  color: #e6e6ef;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.toolbar .title {
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+.palette {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.palette button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 2px solid #3a3a45;
+  border-radius: 8px;
+  background: #1e1e24;
+  color: #e6e6ef;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.palette button.active {
+  border-color: #8b8bf0;
+  background: #2b2b33;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.toolbar .spacer {
+  flex: 1;
+}
+
+.toolbar button.action {
+  padding: 8px 14px;
+  border: 2px solid #3a3a45;
+  border-radius: 8px;
+  background: #1e1e24;
+  color: #e6e6ef;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.toolbar button.action:hover {
+  border-color: #8b8bf0;
+}
+
+canvas {
+  flex: 1;
+  width: 100%;
+  display: block;
+}
