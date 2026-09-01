@@ -38,6 +38,15 @@ export function place(board: Board, index: number, unit: UnitType): Board {
   return next
 }
 
+export function clear(board: Board, index: number): Board {
+  if (!isInBounds(index)) {
+    throw new RangeError(`清除位置越界: ${index}`)
+  }
+  const next = cloneBoard(board)
+  next[index] = null
+  return next
+}
+
 export function countUnits(board: Board): UnitCount {
   const count: UnitCount = { circle: 0, triangle: 0, square: 0 }
   for (const cell of board) {

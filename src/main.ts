@@ -1,4 +1,4 @@
-import { countSquares, countTotal } from './game/engine'
+import { clear, countSquares, countTotal } from './game/engine'
 import {
   canCommit,
   commit,
@@ -11,7 +11,7 @@ import {
   type GameMode,
   type HandoverTarget,
 } from './game/state'
-import type { UnitType } from './game/types'
+import type { Board, UnitType } from './game/types'
 import { BoardView } from './ui/board'
 import { makeBoardRect, UNIT_COLORS, UNIT_LABELS } from './ui/render'
 import './styles.css'
@@ -57,6 +57,19 @@ const hintSpan = document.createElement('span')
 hintSpan.className = 'hint'
 toolbar.appendChild(hintSpan)
 
+const undoBtn = document.createElement('button')
+undoBtn.className = 'action'
+undoBtn.textContent = '撤销'
+undoBtn.addEventListener('click', () => {
+  const idx = placedHistory.pop()
+  if (idx === undefined) return
+  const boards: [Board, Board] = [...state.boards] as [Board, Board]
+  boards[state.currentPlayer] = clear(boards[state.currentPlayer], idx)
+  state = { ...state, boards, budget: state.budget + 1 }
+  render()
+})
+toolbar.appendChild(undoBtn)
+
 const confirmBtn = document.createElement('button')
 confirmBtn.className = 'action primary'
 confirmBtn.addEventListener('click', () => {
@@ -84,6 +97,12 @@ let state: GameState = initialState()
 let selected: UnitType = 'circle'
 let cell = 80
 let gap = 10
+let turnSignature = ''
+const placedHistory: number[] = []
+
+function placementSignature(): string {
+  return `${state.phase}:${state.currentPlayer}:${state.turn}`
+}
 
 const views: [BoardView, BoardView] = [
   new BoardView(state.boards[0], makeBoardRect(0, 0, 80, 10), '玩家 1'),
@@ -158,10 +177,13 @@ function syncToolbar(): void {
         : `${playerName(state.currentPlayer)} 无可放置图形，确认跳过`
       confirmBtn.textContent = '确认布阵'
     }
+    undoBtn.style.display = 'inline-block'
+    undoBtn.disabled = placedHistory.length === 0
     confirmBtn.style.display = 'inline-block'
     confirmBtn.disabled = !canCommit(state)
   } else {
     hintSpan.textContent = ''
+    undoBtn.style.display = 'none'
     confirmBtn.style.display = 'none'
   }
 }
@@ -322,6 +344,11 @@ function hideOverlay(): void {
 }
 
 function render(): void {
+  const sig = placementSignature()
+  if (sig !== turnSignature) {
+    turnSignature = sig
+    placedHistory.length = 0
+  }
   views[0].board = state.boards[0]
   views[1].board = state.boards[1]
   layout()
@@ -368,8 +395,12 @@ canvas.addEventListener('pointerdown', (e) => {
   const my = e.clientY - rect.top
   const idx = views[state.currentPlayer].hitTest(mx, my)
   if (idx >= 0) {
-    state = placeUnit(state, idx, selected)
-    render()
+    const next = placeUnit(state, idx, selected)
+    if (next !== state) {
+      placedHistory.push(idx)
+      state = next
+      render()
+    }
   }
 })
 

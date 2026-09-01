@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   canPlace,
+  clear,
   cloneBoard,
   countSquares,
   countTotal,
@@ -51,6 +52,13 @@ describe('place / canPlace', () => {
     const b = board(['circle'])
     expect(() => place(b, 0, 'square')).toThrow()
     expect(canPlace(b, 0)).toBe(false)
+  })
+
+  it('clear 清空指定格', () => {
+    const b = board(['circle', 'square'])
+    const next = clear(b, 0)
+    expect(next[0]).toBeNull()
+    expect(next[1]).toBe('square')
   })
 })
 
