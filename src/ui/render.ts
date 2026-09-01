@@ -39,7 +39,7 @@ function cellCenter(rect: BoardRect, index: number): { x: number; y: number } {
   }
 }
 
-function drawShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, unit: UnitType): void {
+export function drawShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, unit: UnitType): void {
   ctx.fillStyle = UNIT_COLORS[unit]
   ctx.beginPath()
   if (unit === 'circle') {

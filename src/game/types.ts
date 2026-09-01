@@ -10,6 +10,11 @@ export type Cell = UnitCount
 export type Board = Cell[]
 export type PlayerIndex = 0 | 1
 
+export interface Strike {
+  targetIndex: number
+  unit: 'circle' | 'square'
+}
+
 export interface AttackResult {
   triangles: number
   circlesDestroyed: number

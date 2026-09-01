@@ -1,4 +1,4 @@
-import { countSquares, countTotal, removeUnit } from './game/engine'
+import { cloneBoard, countSquares, countTotal, countUnits, planStrikes, removeUnit } from './game/engine'
 import {
   canCommit,
   commit,
@@ -11,9 +11,9 @@ import {
   type GameMode,
   type HandoverTarget,
 } from './game/state'
-import type { Board, UnitType } from './game/types'
+import type { Board, Strike, UnitType } from './game/types'
 import { BoardView } from './ui/board'
-import { makeBoardRect, UNIT_COLORS, UNIT_LABELS } from './ui/render'
+import { cellCenter, drawBoard, drawShape, makeBoardRect, UNIT_COLORS, UNIT_LABELS, type BoardRect } from './ui/render'
 import './styles.css'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
@@ -99,6 +99,21 @@ let cell = 80
 let gap = 10
 let turnSignature = ''
 const placedHistory: { index: number; unit: UnitType }[] = []
+let battleAnim: BattleAnim | null = null
+let rafId: number | null = null
+
+const BATTLE_TRAVEL_MS = 300
+const BATTLE_STAGGER_MS = 110
+
+interface BattleAnim {
+  stateRef: GameState
+  preBoards: [Board, Board]
+  triangles: [number, number]
+  sources: [number[], number[]]
+  strikes: [Strike[], Strike[]]
+  start: number
+  duration: number
+}
 
 function placementSignature(): string {
   return `${state.phase}:${state.currentPlayer}:${state.turn}`
@@ -161,6 +176,145 @@ function drawCanvas(): void {
     views[1].draw(ctx)
   } else {
     views[state.currentPlayer].draw(ctx)
+  }
+}
+
+function triangleCells(board: Board): number[] {
+  const out: number[] = []
+  board.forEach((c, i) => {
+    for (let k = 0; k < c.triangle; k += 1) out.push(i)
+  })
+  return out
+}
+
+function boardCenter(rect: BoardRect): { x: number; y: number } {
+  const size = 3 * rect.cell + 2 * rect.gap
+  return { x: rect.x + size / 2, y: rect.y + size / 2 }
+}
+
+function createBattleAnim(state: GameState): BattleAnim | null {
+  const pre = state.preBoards
+  if (!pre) return null
+  const triangles: [number, number] = [countUnits(pre[0]).triangle, countUnits(pre[1]).triangle]
+  const sources: [number[], number[]] = [triangleCells(pre[0]), triangleCells(pre[1])]
+  const strikes: [Strike[], Strike[]] = [
+    planStrikes(pre[1], triangles[0]),
+    planStrikes(pre[0], triangles[1]),
+  ]
+  const maxStrikes = Math.max(strikes[0].length, strikes[1].length)
+  const duration = BATTLE_TRAVEL_MS + maxStrikes * BATTLE_STAGGER_MS + 400
+  return { stateRef: state, preBoards: pre, triangles, sources, strikes, start: performance.now(), duration }
+}
+
+function stopAnim(): void {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+  battleAnim = null
+}
+
+function startBattleAnimation(): void {
+  if (battleAnim && battleAnim.stateRef === state) return
+  battleAnim = createBattleAnim(state)
+  if (!battleAnim) return
+  if (rafId !== null) cancelAnimationFrame(rafId)
+  rafId = requestAnimationFrame(animLoop)
+}
+
+function animLoop(now: number): void {
+  if (!battleAnim) return
+  const elapsed = now - battleAnim.start
+  if (elapsed >= battleAnim.duration) {
+    battleAnim = null
+    rafId = null
+    drawCanvas()
+    showBattle()
+    return
+  }
+  drawBattleFrame(elapsed)
+  rafId = requestAnimationFrame(animLoop)
+}
+
+function buildDisplayBoards(elapsed: number): [Board, Board] {
+  const pre = battleAnim!.preBoards
+  const d0 = cloneBoard(pre[0])
+  const d1 = cloneBoard(pre[1])
+  const boards = [d0, d1]
+  for (let s = 0; s < 2; s += 1) {
+    const src = boards[s]
+    const tgt = boards[1 - s]
+    for (let i = 0; i < battleAnim!.triangles[s]; i += 1) {
+      const launch = i * BATTLE_STAGGER_MS
+      const land = launch + BATTLE_TRAVEL_MS
+      if (elapsed >= launch) {
+        const cellIdx = battleAnim!.sources[s][i]
+        if (cellIdx !== undefined && src[cellIdx].triangle > 0) {
+          src[cellIdx].triangle -= 1
+        }
+      }
+      if (elapsed >= land) {
+        const strike = battleAnim!.strikes[s][i]
+        if (strike) {
+          tgt[strike.targetIndex][strike.unit] -= 1
+        }
+      }
+    }
+  }
+  return [d0, d1]
+}
+
+function drawBattleFrame(elapsed: number): void {
+  const [d0, d1] = buildDisplayBoards(elapsed)
+  ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight)
+  drawBoard(ctx, views[0].rect, d0, views[0].label)
+  drawBoard(ctx, views[1].rect, d1, views[1].label)
+  drawImpacts(ctx, elapsed)
+  drawProjectiles(ctx, elapsed)
+}
+
+function drawProjectiles(ctx: CanvasRenderingContext2D, elapsed: number): void {
+  if (!battleAnim) return
+  for (let s = 0; s < 2; s += 1) {
+    for (let i = 0; i < battleAnim.triangles[s]; i += 1) {
+      const launch = i * BATTLE_STAGGER_MS
+      const land = launch + BATTLE_TRAVEL_MS
+      if (elapsed < launch || elapsed >= land) continue
+      const srcIdx = battleAnim.sources[s][i]
+      const strike = battleAnim.strikes[s][i]
+      const from = srcIdx !== undefined
+        ? cellCenter(views[s].rect, srcIdx)
+        : boardCenter(views[s].rect)
+      const to = strike
+        ? cellCenter(views[1 - s].rect, strike.targetIndex)
+        : boardCenter(views[1 - s].rect)
+      const p = (elapsed - launch) / BATTLE_TRAVEL_MS
+      const x = from.x + (to.x - from.x) * p
+      const y = from.y + (to.y - from.y) * p
+      drawShape(ctx, x, y, Math.max(14, cell * 0.24), 'triangle')
+    }
+  }
+}
+
+function drawImpacts(ctx: CanvasRenderingContext2D, elapsed: number): void {
+  if (!battleAnim) return
+  for (let s = 0; s < 2; s += 1) {
+    for (let i = 0; i < battleAnim.triangles[s]; i += 1) {
+      const land = i * BATTLE_STAGGER_MS + BATTLE_TRAVEL_MS
+      if (elapsed >= land && elapsed < land + 160) {
+        const strike = battleAnim.strikes[s][i]
+        if (!strike) continue
+        const c = cellCenter(views[1 - s].rect, strike.targetIndex)
+        const alpha = 1 - (elapsed - land) / 160
+        ctx.save()
+        ctx.globalAlpha = alpha * 0.6
+        ctx.fillStyle = strike.unit === 'circle' ? '#2f80ed' : '#27ae60'
+        ctx.beginPath()
+        ctx.arc(c.x, c.y, cell * 0.42, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+    }
   }
 }
 
@@ -322,7 +476,7 @@ function showBattle(): void {
 
   const btn = document.createElement('button')
   btn.className = 'action primary'
-  btn.textContent = '继续'
+  btn.textContent = '确认结算'
   btn.addEventListener('click', () => {
     state = continueBattle(state)
     render()
@@ -379,10 +533,17 @@ function render(): void {
   views[0].board = state.boards[0]
   views[1].board = state.boards[1]
   layout()
-  drawCanvas()
   syncToolbar()
 
   battlePanel.style.display = 'none'
+
+  if (state.phase === 'battle') {
+    startBattleAnimation()
+    return
+  }
+
+  stopAnim()
+  drawCanvas()
 
   if (state.phase === 'title') {
     showTitle()
@@ -392,11 +553,6 @@ function render(): void {
 
   if (state.turn === 'handover') {
     showHandover()
-    return
-  }
-
-  if (state.phase === 'battle') {
-    showBattle()
     return
   }
 
