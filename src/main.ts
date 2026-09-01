@@ -102,8 +102,9 @@ const placedHistory: { index: number; unit: UnitType }[] = []
 let battleAnim: BattleAnim | null = null
 let rafId: number | null = null
 
-const BATTLE_TRAVEL_MS = 300
-const BATTLE_STAGGER_MS = 110
+const BATTLE_HOLD_MS = 2000
+const BATTLE_TRAVEL_MS = 900
+const BATTLE_STAGGER_MS = 220
 
 interface BattleAnim {
   stateRef: GameState
@@ -202,7 +203,7 @@ function createBattleAnim(state: GameState): BattleAnim | null {
     planStrikes(pre[1], pre[0]),
   ]
   const maxStrikes = Math.max(strikes[0].length, strikes[1].length)
-  const duration = BATTLE_TRAVEL_MS + maxStrikes * BATTLE_STAGGER_MS + 400
+  const duration = BATTLE_HOLD_MS + BATTLE_TRAVEL_MS + maxStrikes * BATTLE_STAGGER_MS + 400
   return { stateRef: state, preBoards: pre, triangles, sources, strikes, start: performance.now(), duration }
 }
 
@@ -245,7 +246,7 @@ function buildDisplayBoards(elapsed: number): [Board, Board] {
     const src = boards[s]
     const tgt = boards[1 - s]
     for (let i = 0; i < battleAnim!.triangles[s]; i += 1) {
-      const launch = i * BATTLE_STAGGER_MS
+      const launch = BATTLE_HOLD_MS + i * BATTLE_STAGGER_MS
       const land = launch + BATTLE_TRAVEL_MS
       if (elapsed >= launch) {
         const cellIdx = battleAnim!.sources[s][i]
@@ -271,13 +272,21 @@ function drawBattleFrame(elapsed: number): void {
   drawBoard(ctx, views[1].rect, d1, views[1].label)
   drawImpacts(ctx, elapsed)
   drawProjectiles(ctx, elapsed)
+
+  if (elapsed < BATTLE_HOLD_MS) {
+    ctx.fillStyle = '#e6e6ef'
+    ctx.font = '600 18px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('准备战斗…', canvas.clientWidth / 2, canvas.clientHeight / 2)
+  }
 }
 
 function drawProjectiles(ctx: CanvasRenderingContext2D, elapsed: number): void {
   if (!battleAnim) return
   for (let s = 0; s < 2; s += 1) {
     for (let i = 0; i < battleAnim.triangles[s]; i += 1) {
-      const launch = i * BATTLE_STAGGER_MS
+      const launch = BATTLE_HOLD_MS + i * BATTLE_STAGGER_MS
       const land = launch + BATTLE_TRAVEL_MS
       if (elapsed < launch || elapsed >= land) continue
       const srcIdx = battleAnim.sources[s][i]
@@ -300,7 +309,7 @@ function drawImpacts(ctx: CanvasRenderingContext2D, elapsed: number): void {
   if (!battleAnim) return
   for (let s = 0; s < 2; s += 1) {
     for (let i = 0; i < battleAnim.triangles[s]; i += 1) {
-      const land = i * BATTLE_STAGGER_MS + BATTLE_TRAVEL_MS
+      const land = BATTLE_HOLD_MS + i * BATTLE_STAGGER_MS + BATTLE_TRAVEL_MS
       if (elapsed >= land && elapsed < land + 160) {
         const strike = battleAnim.strikes[s][i]
         if (!strike) continue
@@ -532,8 +541,9 @@ function render(): void {
   }
   views[0].board = state.boards[0]
   views[1].board = state.boards[1]
-  layout()
   syncToolbar()
+  syncCanvasSize()
+  layout()
 
   battlePanel.style.display = 'none'
 
@@ -561,13 +571,17 @@ function render(): void {
   }
 }
 
-function resize(): void {
+function syncCanvasSize(): void {
   const dpr = window.devicePixelRatio || 1
   const cw = canvas.clientWidth
   const ch = canvas.clientHeight
   canvas.width = Math.floor(cw * dpr)
   canvas.height = Math.floor(ch * dpr)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+}
+
+function resize(): void {
+  syncCanvasSize()
   render()
 }
 
