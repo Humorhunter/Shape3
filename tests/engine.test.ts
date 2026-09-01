@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   canPlace,
-  clear,
   cloneBoard,
   countSquares,
   countTotal,
@@ -10,122 +9,130 @@ import {
   emptyBoard,
   isEliminated,
   place,
-  placementBudget,
+  removeUnit,
   resolveBattle,
 } from '../src/game/engine'
 import { BOARD_SIZE } from '../src/game/constants'
-import type { Board } from '../src/game/types'
+import type { Board, Cell } from '../src/game/types'
 
-function board(cells: (string | null)[]): Board {
-  return cells as Board
+function cell(circle = 0, triangle = 0, square = 0): Cell {
+  return { circle, triangle, square }
+}
+
+function board(...cells: Cell[]): Board {
+  const b = cells.slice()
+  while (b.length < BOARD_SIZE) b.push(cell())
+  return b
 }
 
 describe('emptyBoard / cloneBoard', () => {
   it('创建 9 格空阵地', () => {
     const b = emptyBoard()
     expect(b).toHaveLength(BOARD_SIZE)
-    expect(b.every((c) => c === null)).toBe(true)
+    expect(b.every((c) => c.circle === 0 && c.triangle === 0 && c.square === 0)).toBe(true)
   })
 
   it('cloneBoard 返回独立副本', () => {
-    const b = board(['circle', null, 'square'])
+    const b = board(cell(1, 0, 1))
     const c = cloneBoard(b)
-    c[0] = null
-    expect(b[0]).toBe('circle')
+    c[0].circle = 0
+    expect(b[0].circle).toBe(1)
   })
 })
 
-describe('place / canPlace', () => {
-  it('放置到空位', () => {
+describe('place / canPlace / removeUnit', () => {
+  it('放置单位到格内', () => {
     const b = emptyBoard()
-    const next = place(b, 2, 'triangle')
-    expect(next[2]).toBe('triangle')
-    expect(b[2]).toBeNull()
+    const next = place(b, 2, 'triangle', 9)
+    expect(next[2].triangle).toBe(1)
+    expect(b[2].triangle).toBe(0)
   })
 
   it('越界抛错', () => {
-    expect(() => place(emptyBoard(), 9, 'square')).toThrow()
-    expect(() => place(emptyBoard(), -1, 'square')).toThrow()
+    expect(() => place(emptyBoard(), 9, 'square', 9)).toThrow()
+    expect(() => place(emptyBoard(), -1, 'square', 9)).toThrow()
   })
 
-  it('占用位抛错', () => {
-    const b = board(['circle'])
-    expect(() => place(b, 0, 'square')).toThrow()
-    expect(canPlace(b, 0)).toBe(false)
+  it('达到每格上限后不能再放', () => {
+    const b = board(cell(5, 2, 2))
+    expect(canPlace(b, 0, 9)).toBe(false)
+    expect(() => place(b, 0, 'square', 9)).toThrow()
   })
 
-  it('clear 清空指定格', () => {
-    const b = board(['circle', 'square'])
-    const next = clear(b, 0)
-    expect(next[0]).toBeNull()
-    expect(next[1]).toBe('square')
+  it('未达上限可以放', () => {
+    const b = board(cell(5, 2, 1))
+    expect(canPlace(b, 0, 9)).toBe(true)
+    expect(place(b, 0, 'square', 9)[0].square).toBe(2)
+  })
+
+  it('removeUnit 减少一个单位', () => {
+    const b = board(cell(2, 1, 1))
+    const next = removeUnit(b, 0, 'circle')
+    expect(next[0].circle).toBe(1)
+    expect(removeUnit(b, 0, 'triangle')[0].triangle).toBe(0)
   })
 })
 
 describe('countUnits / countSquares / countTotal', () => {
-  const b = board(['circle', 'square', 'square', 'triangle', null])
+  const b = board(cell(1, 1, 2), cell(0, 1, 0))
   it('统计各单位数量', () => {
-    expect(countUnits(b)).toEqual({ circle: 1, square: 2, triangle: 1 })
+    expect(countUnits(b)).toEqual({ circle: 1, square: 2, triangle: 2 })
   })
   it('正方形数 = 生产预算', () => {
     expect(countSquares(b)).toBe(2)
-    expect(placementBudget(b)).toBe(2)
   })
   it('总图形数', () => {
-    expect(countTotal(b)).toBe(4)
+    expect(countTotal(b)).toBe(5)
   })
 })
 
 describe('resolveBattle', () => {
-  it('三角形摧毁敌方圆形优先', () => {
-    const p0 = board(['triangle', 'triangle', 'triangle', null, null, null, null, null, null])
-    const p1 = board(['circle', 'circle', 'square', 'square', null, null, null, null, null])
+  it('三角形摧毁敌方圆形优先，再摧毁方形', () => {
+    const p0 = board(cell(0, 3, 0))
+    const p1 = board(cell(2, 0, 2))
     const { p1: next1, report } = resolveBattle(p0, p1)
-    expect(report[1]).toEqual({ triangles: 3, circlesDestroyed: 2, squaresDestroyed: 1 })
-    expect(next1).toEqual(board([null, null, null, 'square', null, null, null, null, null]))
+    expect(report[0]).toEqual({ triangles: 3, circlesDestroyed: 2, squaresDestroyed: 1 })
+    expect(next1[0]).toEqual(cell(0, 0, 1))
   })
 
   it('正方形可被摧毁', () => {
-    const p0 = board(['triangle', 'triangle', null, null, null, null, null, null, null])
-    const p1 = board(['circle', 'square', 'square', null, null, null, null, null, null])
+    const p0 = board(cell(0, 2, 0))
+    const p1 = board(cell(1, 0, 2))
     const { p1: next1, report } = resolveBattle(p0, p1)
-    expect(report[1]).toEqual({ triangles: 2, circlesDestroyed: 1, squaresDestroyed: 1 })
-    expect(next1[0]).toBeNull()
-    expect(next1[1]).toBeNull()
-    expect(next1[2]).toBe('square')
+    expect(report[0]).toEqual({ triangles: 2, circlesDestroyed: 1, squaresDestroyed: 1 })
+    expect(next1[0]).toEqual(cell(0, 0, 1))
   })
 
   it('三角形一律阵亡，不参与防守', () => {
-    const p0 = board(['triangle', null, null, null, null, null, null, null, null])
-    const p1 = board(['triangle', 'triangle', 'circle', 'square', null, null, null, null, null])
+    const p0 = board(cell(0, 1, 0))
+    const p1 = board(cell(1, 2, 1))
     const { p0: next0, p1: next1 } = resolveBattle(p0, p1)
-    expect(next0.every((c) => c !== 'triangle')).toBe(true)
-    expect(next1[0]).toBeNull()
-    expect(next1[1]).toBeNull()
-    expect(next1[2]).toBeNull()
-    expect(next1[3]).toBe('square')
+    expect(next0[0].triangle).toBe(0)
+    expect(next1[0].circle).toBe(0)
+    expect(next1[0].triangle).toBe(0)
+    expect(next1[0].square).toBe(1)
   })
 
   it('多余三角形同样毁灭', () => {
-    const p0 = board(['triangle', 'triangle', 'triangle', null, null, null, null, null, null])
-    const p1 = board(['circle', null, null, null, null, null, null, null, null])
+    const p0 = board(cell(0, 3, 0))
+    const p1 = board(cell(1, 0, 0))
     const { p1: next1, report } = resolveBattle(p0, p1)
-    expect(report[1]).toEqual({ triangles: 3, circlesDestroyed: 1, squaresDestroyed: 0 })
-    expect(next1.every((c) => c === null)).toBe(true)
+    expect(report[0]).toEqual({ triangles: 3, circlesDestroyed: 1, squaresDestroyed: 0 })
+    expect(isEliminated(next1)).toBe(true)
   })
 
   it('同时结算互不影响', () => {
-    const p0 = board(['triangle', 'circle', 'circle', null, null, null, null, null, null])
-    const p1 = board(['triangle', 'triangle', 'square', null, null, null, null, null, null])
+    const p0 = board(cell(2, 1, 0))
+    const p1 = board(cell(0, 2, 1))
     const result = resolveBattle(p0, p1)
-    expect(result.report[0]).toEqual({ triangles: 2, circlesDestroyed: 2, squaresDestroyed: 0 })
-    expect(result.report[1]).toEqual({ triangles: 1, circlesDestroyed: 0, squaresDestroyed: 1 })
+    expect(result.report[0]).toEqual({ triangles: 1, circlesDestroyed: 0, squaresDestroyed: 1 })
+    expect(result.report[1]).toEqual({ triangles: 2, circlesDestroyed: 2, squaresDestroyed: 0 })
   })
 })
 
 describe('胜负判定', () => {
   it('一方归零判负', () => {
-    const p0 = board(['square', null, null, null, null, null, null, null, null])
+    const p0 = board(cell(0, 0, 1))
     const p1 = emptyBoard()
     expect(isEliminated(p1)).toBe(true)
     expect(determineOutcome(p0, p1)).toBe('p0')
@@ -136,8 +143,6 @@ describe('胜负判定', () => {
   })
 
   it('均未归零则进行中', () => {
-    const p0 = board(['square'])
-    const p1 = board(['circle'])
-    expect(determineOutcome(p0, p1)).toBe('ongoing')
+    expect(determineOutcome(board(cell(0, 0, 1)), board(cell(1)))).toBe('ongoing')
   })
 })

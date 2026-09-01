@@ -1,4 +1,4 @@
-import { BOARD_SIZE } from './constants'
+import { BOARD_SIZE, DEFAULT_MAX_PER_CELL } from './constants'
 import {
   canPlace,
   countSquares,
@@ -19,6 +19,7 @@ export interface GameState {
   phase: Phase
   mode: GameMode
   maxRounds: number
+  maxPerCell: number
   round: number
   boards: [Board, Board]
   currentPlayer: PlayerIndex
@@ -36,6 +37,7 @@ export function initialState(): GameState {
     phase: 'title',
     mode: 'elimination',
     maxRounds: 10,
+    maxPerCell: DEFAULT_MAX_PER_CELL,
     round: 1,
     boards: [emptyBoard(), emptyBoard()],
     currentPlayer: 0,
@@ -47,12 +49,13 @@ export function initialState(): GameState {
   }
 }
 
-export function createGame(mode: GameMode, maxRounds: number): GameState {
+export function createGame(mode: GameMode, maxRounds: number, maxPerCell: number): GameState {
   return {
     ...initialState(),
     phase: 'setup',
     mode,
     maxRounds,
+    maxPerCell,
     currentPlayer: 0,
     turn: 'place',
     budget: INITIAL_BUDGET,
@@ -75,10 +78,10 @@ export function placeUnit(state: GameState, index: number, unit: UnitType): Game
   if (!isPlacementPhase(state.phase) || state.turn !== 'place') return state
   if (state.budget <= 0) return state
   const board = state.boards[state.currentPlayer]
-  if (!canPlace(board, index)) return state
+  if (!canPlace(board, index, state.maxPerCell)) return state
 
   const boards: [Board, Board] = [...state.boards] as [Board, Board]
-  boards[state.currentPlayer] = place(board, index, unit)
+  boards[state.currentPlayer] = place(board, index, unit, state.maxPerCell)
   return { ...state, boards, budget: state.budget - 1 }
 }
 

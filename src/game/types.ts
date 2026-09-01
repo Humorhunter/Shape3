@@ -1,13 +1,14 @@
 export type UnitType = 'circle' | 'triangle' | 'square'
-export type Cell = UnitType | null
-export type Board = Cell[]
-export type PlayerIndex = 0 | 1
 
 export interface UnitCount {
   circle: number
   triangle: number
   square: number
 }
+
+export type Cell = UnitCount
+export type Board = Cell[]
+export type PlayerIndex = 0 | 1
 
 export interface AttackResult {
   triangles: number

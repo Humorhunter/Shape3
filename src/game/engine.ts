@@ -5,54 +5,65 @@ import type {
   Board,
   Cell,
   Outcome,
-  PlayerIndex,
   UnitCount,
   UnitType,
 } from './types'
 
+export function emptyCell(): Cell {
+  return { circle: 0, triangle: 0, square: 0 }
+}
+
 export function emptyBoard(): Board {
-  return Array<Cell>(BOARD_SIZE).fill(null)
+  return Array.from({ length: BOARD_SIZE }, () => emptyCell())
+}
+
+export function cloneCell(cell: Cell): Cell {
+  return { ...cell }
 }
 
 export function cloneBoard(board: Board): Board {
-  return board.slice()
+  return board.map(cloneCell)
 }
 
 export function isInBounds(index: number): boolean {
   return Number.isInteger(index) && index >= 0 && index < BOARD_SIZE
 }
 
-export function canPlace(board: Board, index: number): boolean {
-  return isInBounds(index) && board[index] === null
+export function cellTotal(cell: Cell): number {
+  return cell.circle + cell.triangle + cell.square
 }
 
-export function place(board: Board, index: number, unit: UnitType): Board {
+export function canPlace(board: Board, index: number, maxPerCell: number): boolean {
+  return isInBounds(index) && cellTotal(board[index]) < maxPerCell
+}
+
+export function place(board: Board, index: number, unit: UnitType, maxPerCell: number): Board {
   if (!isInBounds(index)) {
     throw new RangeError(`放置位置越界: ${index}`)
   }
-  if (board[index] !== null) {
-    throw new Error(`位置 ${index} 已被占用`)
+  if (cellTotal(board[index]) >= maxPerCell) {
+    throw new Error(`位置 ${index} 已满（上限 ${maxPerCell}）`)
   }
   const next = cloneBoard(board)
-  next[index] = unit
+  next[index][unit] += 1
   return next
 }
 
-export function clear(board: Board, index: number): Board {
+export function removeUnit(board: Board, index: number, unit: UnitType): Board {
   if (!isInBounds(index)) {
-    throw new RangeError(`清除位置越界: ${index}`)
+    throw new RangeError(`移除位置越界: ${index}`)
   }
   const next = cloneBoard(board)
-  next[index] = null
+  next[index][unit] = Math.max(0, next[index][unit] - 1)
   return next
 }
 
 export function countUnits(board: Board): UnitCount {
   const count: UnitCount = { circle: 0, triangle: 0, square: 0 }
   for (const cell of board) {
-    if (cell !== null) {
-      count[cell] += 1
-    }
+    count.circle += cell.circle
+    count.triangle += cell.triangle
+    count.square += cell.square
   }
   return count
 }
@@ -67,42 +78,43 @@ export function countTotal(board: Board): number {
 }
 
 export function isEliminated(board: Board): boolean {
-  return board.every((cell) => cell === null)
+  return board.every((cell) => cellTotal(cell) === 0)
 }
 
-function resolveAttack(attackerTriangles: number, defender: Board): {
+function attack(board: Board, triangles: number): {
   board: Board
-  result: AttackResult
+  circlesDestroyed: number
+  squaresDestroyed: number
 } {
-  const next = cloneBoard(defender)
+  const next = cloneBoard(board)
+  let remaining = triangles
   let circlesDestroyed = 0
   let squaresDestroyed = 0
-  let remaining = attackerTriangles
 
-  for (let i = 0; i < next.length && remaining > 0; i += 1) {
-    if (next[i] === 'circle') {
-      next[i] = null
+  for (const cell of next) {
+    while (remaining > 0 && cell.circle > 0) {
+      cell.circle -= 1
       circlesDestroyed += 1
       remaining -= 1
     }
   }
-
-  for (let i = 0; i < next.length && remaining > 0; i += 1) {
-    if (next[i] === 'square') {
-      next[i] = null
+  for (const cell of next) {
+    while (remaining > 0 && cell.square > 0) {
+      cell.square -= 1
       squaresDestroyed += 1
       remaining -= 1
     }
   }
 
-  return {
-    board: next,
-    result: {
-      triangles: attackerTriangles,
-      circlesDestroyed,
-      squaresDestroyed,
-    },
+  return { board: next, circlesDestroyed, squaresDestroyed }
+}
+
+function removeTriangles(board: Board): Board {
+  const next = cloneBoard(board)
+  for (const cell of next) {
+    cell.triangle = 0
   }
+  return next
 }
 
 export function resolveBattle(p0: Board, p1: Board): {
@@ -113,30 +125,25 @@ export function resolveBattle(p0: Board, p1: Board): {
   const t0 = countUnits(p0).triangle
   const t1 = countUnits(p1).triangle
 
-  const attack0 = resolveAttack(t0, p1)
-  const attack1 = resolveAttack(t1, p0)
+  const attack0 = attack(p1, t0)
+  const attack1 = attack(p0, t1)
 
-  const result0: AttackResult = attack1.result
-  const result1: AttackResult = attack0.result
-
-  const next0 = removeTriangles(attack1.board)
-  const next1 = removeTriangles(attack0.board)
+  const result0: AttackResult = {
+    triangles: t0,
+    circlesDestroyed: attack0.circlesDestroyed,
+    squaresDestroyed: attack0.squaresDestroyed,
+  }
+  const result1: AttackResult = {
+    triangles: t1,
+    circlesDestroyed: attack1.circlesDestroyed,
+    squaresDestroyed: attack1.squaresDestroyed,
+  }
 
   return {
-    p0: next0,
-    p1: next1,
+    p0: removeTriangles(attack1.board),
+    p1: removeTriangles(attack0.board),
     report: [result0, result1],
   }
-}
-
-function removeTriangles(board: Board): Board {
-  const next = cloneBoard(board)
-  for (let i = 0; i < next.length; i += 1) {
-    if (next[i] === 'triangle') {
-      next[i] = null
-    }
-  }
-  return next
 }
 
 export function determineOutcome(p0: Board, p1: Board): Outcome {
@@ -146,17 +153,4 @@ export function determineOutcome(p0: Board, p1: Board): Outcome {
   if (e0) return 'p1'
   if (e1) return 'p0'
   return 'ongoing'
-}
-
-export function placementBudget(board: Board): number {
-  return countSquares(board)
-}
-
-export function currentPlayerBoards(
-  boards: [Board, Board],
-  player: PlayerIndex,
-): { self: Board; opponent: Board } {
-  return player === 0
-    ? { self: boards[0], opponent: boards[1] }
-    : { self: boards[1], opponent: boards[0] }
 }

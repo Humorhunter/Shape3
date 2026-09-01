@@ -59,6 +59,38 @@ function drawShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: 
   }
 }
 
+function drawUnitsInCell(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  cell: Cell,
+): void {
+  const units: UnitType[] = []
+  for (let i = 0; i < cell.circle; i += 1) units.push('circle')
+  for (let i = 0; i < cell.triangle; i += 1) units.push('triangle')
+  for (let i = 0; i < cell.square; i += 1) units.push('square')
+  const total = units.length
+  if (total === 0) return
+
+  if (total <= 9) {
+    const step = size / 3
+    units.forEach((unit, i) => {
+      const col = i % 3
+      const row = Math.floor(i / 3)
+      const cx = x + (col + 0.5) * step
+      const cy = y + (row + 0.5) * step
+      drawShape(ctx, cx, cy, step * 0.8, unit)
+    })
+  } else {
+    ctx.fillStyle = '#e6e6ef'
+    ctx.font = `700 ${Math.max(14, Math.floor(size * 0.45))}px system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(String(total), x + size / 2, y + size / 2)
+  }
+}
+
 export function drawCell(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -74,9 +106,7 @@ export function drawCell(
   ctx.fill()
   ctx.stroke()
 
-  if (cell) {
-    drawShape(ctx, x + size / 2, y + size / 2, size, cell)
-  }
+  drawUnitsInCell(ctx, x, y, size, cell)
 }
 
 export function drawBoard(

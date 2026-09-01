@@ -1,4 +1,4 @@
-import { clear, countSquares, countTotal } from './game/engine'
+import { countSquares, countTotal, removeUnit } from './game/engine'
 import {
   canCommit,
   commit,
@@ -61,10 +61,10 @@ const undoBtn = document.createElement('button')
 undoBtn.className = 'action'
 undoBtn.textContent = '撤销'
 undoBtn.addEventListener('click', () => {
-  const idx = placedHistory.pop()
-  if (idx === undefined) return
+  const last = placedHistory.pop()
+  if (last === undefined) return
   const boards: [Board, Board] = [...state.boards] as [Board, Board]
-  boards[state.currentPlayer] = clear(boards[state.currentPlayer], idx)
+  boards[state.currentPlayer] = removeUnit(boards[state.currentPlayer], last.index, last.unit)
   state = { ...state, boards, budget: state.budget + 1 }
   render()
 })
@@ -98,7 +98,7 @@ let selected: UnitType = 'circle'
 let cell = 80
 let gap = 10
 let turnSignature = ''
-const placedHistory: number[] = []
+const placedHistory: { index: number; unit: UnitType }[] = []
 
 function placementSignature(): string {
   return `${state.phase}:${state.currentPlayer}:${state.turn}`
@@ -251,17 +251,28 @@ function showTitle(): void {
   roundsInput.style.width = '56px'
   roundsLabel.append(roundsInput, document.createTextNode(' 回合'))
 
+  const capLabel = document.createElement('label')
+  capLabel.append(document.createTextNode(' 每格兵力上限 '))
+  const capInput = document.createElement('input')
+  capInput.type = 'number'
+  capInput.min = '1'
+  capInput.max = '99'
+  capInput.value = '9'
+  capInput.style.width = '56px'
+  capLabel.append(capInput)
+
   const start = document.createElement('button')
   start.type = 'submit'
   start.className = 'action primary'
   start.textContent = '开始游戏'
 
-  form.append(elimLabel, document.createElement('br'), roundsLabel, document.createElement('br'), start)
+  form.append(elimLabel, document.createElement('br'), roundsLabel, document.createElement('br'), capLabel, document.createElement('br'), start)
   form.addEventListener('submit', (e) => {
     e.preventDefault()
     const mode: GameMode = elimRadio.checked ? 'elimination' : 'rounds'
     const maxRounds = Math.max(1, Number(roundsInput.value) || 10)
-    state = createGame(mode, maxRounds)
+    const maxPerCell = Math.max(1, Number(capInput.value) || 9)
+    state = createGame(mode, maxRounds, maxPerCell)
     render()
   })
 
@@ -397,7 +408,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (idx >= 0) {
     const next = placeUnit(state, idx, selected)
     if (next !== state) {
-      placedHistory.push(idx)
+      placedHistory.push({ index: idx, unit: selected })
       state = next
       render()
     }
