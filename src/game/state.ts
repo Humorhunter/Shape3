@@ -18,6 +18,7 @@ export type HandoverTarget = 'setupP1' | 'placeP0' | 'placeP1'
 export interface GameState {
   phase: Phase
   mode: GameMode
+  vsAI: boolean
   maxRounds: number
   maxPerCell: number
   round: number
@@ -37,6 +38,7 @@ export function initialState(): GameState {
   return {
     phase: 'title',
     mode: 'elimination',
+    vsAI: false,
     maxRounds: 10,
     maxPerCell: DEFAULT_MAX_PER_CELL,
     round: 1,
@@ -51,13 +53,14 @@ export function initialState(): GameState {
   }
 }
 
-export function createGame(mode: GameMode, maxRounds: number, maxPerCell: number): GameState {
+export function createGame(mode: GameMode, maxRounds: number, maxPerCell: number, vsAI = false): GameState {
   return {
     ...initialState(),
     phase: 'setup',
     mode,
     maxRounds,
     maxPerCell,
+    vsAI,
     currentPlayer: 0,
     turn: 'place',
     budget: INITIAL_BUDGET,

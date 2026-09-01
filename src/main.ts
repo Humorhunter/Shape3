@@ -1,3 +1,4 @@
+import { aiPlan } from './game/ai'
 import { cloneBoard, countSquares, countTotal, countUnits, planStrikes, removeUnit } from './game/engine'
 import {
   canCommit,
@@ -101,6 +102,7 @@ let turnSignature = ''
 const placedHistory: { index: number; unit: UnitType }[] = []
 let battleAnim: BattleAnim | null = null
 let rafId: number | null = null
+let aiTimer: number | null = null
 
 const BATTLE_HOLD_MS = 2000
 const BATTLE_TRAVEL_MS = 900
@@ -131,6 +133,10 @@ function playerName(p: number): string {
 
 function isPlacementTurn(): boolean {
   return (state.phase === 'setup' || state.phase === 'place') && state.turn === 'place'
+}
+
+function isHumanPlacementTurn(): boolean {
+  return isPlacementTurn() && !(state.vsAI && state.currentPlayer === 1)
 }
 
 function showTwoBoards(): boolean {
@@ -330,7 +336,7 @@ function syncToolbar(): void {
     btn.classList.toggle('active', unit === selected)
   }
 
-  palette.style.display = isPlacementTurn() ? 'flex' : 'none'
+  palette.style.display = isHumanPlacementTurn() ? 'flex' : 'none'
 
   if (state.phase === 'title') {
     roundSpan.textContent = ''
@@ -342,7 +348,7 @@ function syncToolbar(): void {
     roundSpan.textContent = '游戏结束'
   }
 
-  if (isPlacementTurn()) {
+  if (isHumanPlacementTurn()) {
     if (state.phase === 'setup') {
       hintSpan.textContent = state.budget > 0
         ? `${playerName(state.currentPlayer)} 布阵：还需 ${state.budget} 个图形`
@@ -358,6 +364,10 @@ function syncToolbar(): void {
     undoBtn.disabled = placedHistory.length === 0
     confirmBtn.style.display = 'inline-block'
     confirmBtn.disabled = !canCommit(state)
+  } else if (isPlacementTurn()) {
+    hintSpan.textContent = '机器人思考中…'
+    undoBtn.style.display = 'none'
+    confirmBtn.style.display = 'none'
   } else {
     hintSpan.textContent = ''
     undoBtn.style.display = 'none'
@@ -396,6 +406,37 @@ function showHandover(): void {
   showOverlay(el)
 }
 
+function showAIThinking(): void {
+  const el = document.createElement('div')
+  el.className = 'dialog'
+  const h = document.createElement('h2')
+  h.textContent = '机器人思考中…'
+  el.appendChild(h)
+  showOverlay(el)
+}
+
+function aiSchedule(): void {
+  state = continueHandover(state)
+  showAIThinking()
+  if (aiTimer !== null) clearTimeout(aiTimer)
+  aiTimer = window.setTimeout(() => {
+    aiTimer = null
+    runAITurn()
+  }, 800)
+}
+
+function runAITurn(): void {
+  if (!state.vsAI || state.currentPlayer !== 1 || !isPlacementTurn()) return
+  const phase = state.phase === 'setup' ? 'setup' : 'place'
+  const plan = aiPlan(state.boards, 1, state.budget, state.maxPerCell, phase)
+  let s = state
+  for (const move of plan) {
+    s = placeUnit(s, move.index, move.unit)
+  }
+  state = commit(s)
+  render()
+}
+
 function showTitle(): void {
   const el = document.createElement('div')
   el.className = 'dialog'
@@ -405,6 +446,22 @@ function showTitle(): void {
   sub.textContent = '圆防御 · 三角进攻 · 方生产'
 
   const form = document.createElement('form')
+
+  const pvpLabel = document.createElement('label')
+  const pvpRadio = document.createElement('input')
+  pvpRadio.type = 'radio'
+  pvpRadio.name = 'opponent'
+  pvpRadio.value = 'human'
+  pvpRadio.checked = true
+  pvpLabel.append(pvpRadio, document.createTextNode(' 双人热座'))
+
+  const pveLabel = document.createElement('label')
+  const pveRadio = document.createElement('input')
+  pveRadio.type = 'radio'
+  pveRadio.name = 'opponent'
+  pveRadio.value = 'ai'
+  pveLabel.append(pveRadio, document.createTextNode(' 单人 vs 机器人'))
+
   const elimLabel = document.createElement('label')
   const elimRadio = document.createElement('input')
   elimRadio.type = 'radio'
@@ -443,13 +500,26 @@ function showTitle(): void {
   start.className = 'action primary'
   start.textContent = '开始游戏'
 
-  form.append(elimLabel, document.createElement('br'), roundsLabel, document.createElement('br'), capLabel, document.createElement('br'), start)
+  form.append(
+    pvpLabel,
+    document.createElement('br'),
+    pveLabel,
+    document.createElement('br'),
+    elimLabel,
+    document.createElement('br'),
+    roundsLabel,
+    document.createElement('br'),
+    capLabel,
+    document.createElement('br'),
+    start,
+  )
   form.addEventListener('submit', (e) => {
     e.preventDefault()
     const mode: GameMode = elimRadio.checked ? 'elimination' : 'rounds'
+    const vsAI = pveRadio.checked
     const maxRounds = Math.max(1, Number(roundsInput.value) || 10)
     const maxPerCell = Math.max(1, Number(capInput.value) || 9)
-    state = createGame(mode, maxRounds, maxPerCell)
+    state = createGame(mode, maxRounds, maxPerCell, vsAI)
     render()
   })
 
@@ -558,6 +628,7 @@ function render(): void {
   battlePanel.style.display = 'none'
 
   if (state.phase === 'battle') {
+    hideOverlay()
     startBattleAnimation()
     return
   }
@@ -572,6 +643,10 @@ function render(): void {
   hideOverlay()
 
   if (state.turn === 'handover') {
+    if (state.vsAI && (state.handoverTo === 'setupP1' || state.handoverTo === 'placeP1')) {
+      aiSchedule()
+      return
+    }
     showHandover()
     return
   }
@@ -596,7 +671,7 @@ function resize(): void {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
-  if (!isPlacementTurn()) return
+  if (!isHumanPlacementTurn()) return
   const rect = canvas.getBoundingClientRect()
   const mx = e.clientX - rect.left
   const my = e.clientY - rect.top
