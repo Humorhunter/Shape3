@@ -69,6 +69,18 @@ body {
   flex: 1;
 }
 
+.toolbar .round {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #2b2b33;
+  font-size: 13px;
+}
+
+.toolbar .hint {
+  opacity: 0.85;
+  font-size: 13px;
+}
+
 .toolbar button.action {
   padding: 8px 14px;
   border: 2px solid #3a3a45;
@@ -83,8 +95,99 @@ body {
   border-color: #8b8bf0;
 }
 
+.toolbar button.action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+button.action.primary {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  font-weight: 600;
+}
+
+button.action.primary:hover {
+  background: #6366f1;
+}
+
 canvas {
   flex: 1;
   width: 100%;
   display: block;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 14, 0.92);
+  z-index: 20;
+}
+
+.dialog {
+  max-width: 360px;
+  width: 90%;
+  padding: 28px;
+  border: 1px solid #3a3a45;
+  border-radius: 16px;
+  background: #1e1e24;
+  text-align: center;
+}
+
+.dialog h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+}
+
+.dialog p {
+  margin: 0 0 16px;
+  color: #b8b8c8;
+  line-height: 1.5;
+}
+
+.dialog form {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialog form .action {
+  margin-top: 8px;
+}
+
+.dialog .action {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 15px;
+}
+
+.battle-panel {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px;
+  border: 1px solid #3a3a45;
+  border-radius: 12px;
+  background: #1e1e24;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+  min-width: 280px;
+  font-size: 14px;
+}
+
+.battle-panel .battle-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
