@@ -124,18 +124,34 @@ function showTwoBoards(): boolean {
 function layout(): void {
   const cw = canvas.clientWidth
   const ch = canvas.clientHeight
+  const PAD = 40
+  const MARGIN = 48
+
   if (showTwoBoards()) {
-    cell = Math.max(36, Math.floor(Math.min(cw / 3.6, (ch - 96) / 7.2)))
+    const cellW = Math.floor((cw - MARGIN) / (2 * 3.24))
+    const cellH = Math.floor((ch - PAD) / 3.24)
+    cell = Math.max(36, Math.min(cellW, cellH))
   } else {
-    cell = Math.max(36, Math.floor(Math.min(cw / 3.6, ch / 3.8)))
+    const cellW = Math.floor((cw - PAD) / 3.24)
+    const cellH = Math.floor((ch - PAD) / 3.24)
+    cell = Math.max(36, Math.min(cellW, cellH))
   }
+
   gap = Math.floor(cell * 0.12)
   const bw = 3 * cell + 2 * gap
-  const x = Math.floor((cw - bw) / 2)
   const bh = 3 * cell + 2 * gap
-  const y0 = showTwoBoards() ? 20 : Math.max(20, Math.floor((ch - bh) / 2))
-  views[0].rect = makeBoardRect(x, y0, cell, gap)
-  views[1].rect = makeBoardRect(x, y0 + bh + 56, cell, gap)
+  const y = Math.floor((ch - bh) / 2)
+
+  if (showTwoBoards()) {
+    const totalW = bw * 2 + MARGIN
+    const x0 = Math.floor((cw - totalW) / 2)
+    views[0].rect = makeBoardRect(x0, y, cell, gap)
+    views[1].rect = makeBoardRect(x0 + bw + MARGIN, y, cell, gap)
+  } else {
+    const x = Math.floor((cw - bw) / 2)
+    views[0].rect = makeBoardRect(x, y, cell, gap)
+    views[1].rect = makeBoardRect(x, y, cell, gap)
+  }
 }
 
 function drawCanvas(): void {
