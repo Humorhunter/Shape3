@@ -86,7 +86,7 @@ describe('布阵与放置', () => {
 })
 
 describe('setup 换手流程', () => {
-  it('P0 布阵→换手→P1 布阵→换手→进入第1回合放置', () => {
+  it('P0 布阵→换手→P1 布阵→直接进入战斗', () => {
     let s = setupGame('elimination')
     s = placeComposition(s, nine)
     s = commit(s)
@@ -99,25 +99,31 @@ describe('setup 换手流程', () => {
 
     s = placeComposition(s, nine)
     s = commit(s)
-    expect(s.handoverTo).toBe('placeP0')
-
-    s = continueHandover(s)
-    expect(s.phase).toBe('place')
-    expect(s.round).toBe(1)
-    expect(s.currentPlayer).toBe(0)
-    expect(s.budget).toBe(3)
+    expect(s.phase).toBe('battle')
+    expect(s.report).not.toBeNull()
   })
 })
 
 describe('回合战斗流程', () => {
-  it('双方确认后进入 battle，并解析战果', () => {
+  it('布阵后直接战斗，战毕进入下一回合放置', () => {
     let s = setupGame('elimination')
     s = placeComposition(s, nine)
     s = commit(s)
     s = continueHandover(s)
     s = placeComposition(s, nine)
     s = commit(s)
+    expect(s.phase).toBe('battle')
+    expect(s.report).not.toBeNull()
+    expect(countTriangles(s.boards[0])).toBe(0)
+
+    s = continueBattle(s)
+    expect(s.phase).toBe('place')
+    expect(s.handoverTo).toBe('placeP0')
+    expect(s.round).toBe(2)
+
     s = continueHandover(s)
+    expect(s.currentPlayer).toBe(0)
+    expect(s.budget).toBe(3)
 
     s = commit(s)
     expect(s.handoverTo).toBe('placeP1')
@@ -127,8 +133,6 @@ describe('回合战斗流程', () => {
 
     s = commit(s)
     expect(s.phase).toBe('battle')
-    expect(s.report).not.toBeNull()
-    expect(countTriangles(s.boards[0])).toBe(0)
   })
 
   it('战毕若无人归零则进入下一回合', () => {
@@ -137,10 +141,6 @@ describe('回合战斗流程', () => {
     s = commit(s)
     s = continueHandover(s)
     s = placeComposition(s, nine)
-    s = commit(s)
-    s = continueHandover(s)
-    s = commit(s)
-    s = continueHandover(s)
     s = commit(s)
     expect(s.phase).toBe('battle')
 

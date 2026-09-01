@@ -22,6 +22,7 @@ export interface GameState {
   maxPerCell: number
   round: number
   boards: [Board, Board]
+  preBoards: [Board, Board] | null
   currentPlayer: PlayerIndex
   turn: Turn
   budget: number
@@ -40,6 +41,7 @@ export function initialState(): GameState {
     maxPerCell: DEFAULT_MAX_PER_CELL,
     round: 1,
     boards: [emptyBoard(), emptyBoard()],
+    preBoards: null,
     currentPlayer: 0,
     turn: 'place',
     budget: INITIAL_BUDGET,
@@ -91,7 +93,7 @@ export function commit(state: GameState): GameState {
     if (state.currentPlayer === 0) {
       return { ...state, turn: 'handover', handoverTo: 'setupP1' }
     }
-    return { ...state, turn: 'handover', handoverTo: 'placeP0' }
+    return enterBattle(state)
   }
   if (state.currentPlayer === 0) {
     return { ...state, turn: 'handover', handoverTo: 'placeP1' }
@@ -100,12 +102,17 @@ export function commit(state: GameState): GameState {
 }
 
 function enterBattle(state: GameState): GameState {
+  const preBoards: [Board, Board] = [
+    state.boards[0].map((c) => ({ ...c })),
+    state.boards[1].map((c) => ({ ...c })),
+  ]
   const { p0, p1, report } = resolveBattle(state.boards[0], state.boards[1])
   return {
     ...state,
     phase: 'battle',
     turn: 'place',
     boards: [p0, p1],
+    preBoards,
     report,
   }
 }
