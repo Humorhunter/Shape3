@@ -139,7 +139,7 @@ function showTwoBoards(): boolean {
 function layout(): void {
   const cw = canvas.clientWidth
   const ch = canvas.clientHeight
-  const PAD = 40
+  const PAD = 48
   const MARGIN = 48
 
   if (showTwoBoards()) {
@@ -155,7 +155,7 @@ function layout(): void {
   gap = Math.floor(cell * 0.12)
   const bw = 3 * cell + 2 * gap
   const bh = 3 * cell + 2 * gap
-  const y = Math.floor((ch - bh) / 2)
+  const y = Math.floor((ch - bh) / 2) + 16
 
   if (showTwoBoards()) {
     const totalW = bw * 2 + MARGIN
@@ -198,8 +198,8 @@ function createBattleAnim(state: GameState): BattleAnim | null {
   const triangles: [number, number] = [countUnits(pre[0]).triangle, countUnits(pre[1]).triangle]
   const sources: [number[], number[]] = [triangleCells(pre[0]), triangleCells(pre[1])]
   const strikes: [Strike[], Strike[]] = [
-    planStrikes(pre[1], triangles[0]),
-    planStrikes(pre[0], triangles[1]),
+    planStrikes(pre[0], pre[1]),
+    planStrikes(pre[1], pre[0]),
   ]
   const maxStrikes = Math.max(strikes[0].length, strikes[1].length)
   const duration = BATTLE_TRAVEL_MS + maxStrikes * BATTLE_STAGGER_MS + 400

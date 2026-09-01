@@ -82,53 +82,20 @@ export function isEliminated(board: Board): boolean {
   return board.every((cell) => cellTotal(cell) === 0)
 }
 
-export function planStrikes(defender: Board, triangles: number): Strike[] {
+export function planStrikes(attacker: Board, defender: Board): Strike[] {
   const strikes: Strike[] = []
-  let remaining = triangles
-
-  for (let i = 0; i < defender.length && remaining > 0; i += 1) {
-    const cell = defender[i]
-    for (let k = 0; k < cell.circle && remaining > 0; k += 1) {
+  for (let i = 0; i < BOARD_SIZE; i += 1) {
+    let remaining = attacker[i].triangle
+    for (let k = 0; k < defender[i].circle && remaining > 0; k += 1) {
       strikes.push({ targetIndex: i, unit: 'circle' })
       remaining -= 1
     }
-  }
-  for (let i = 0; i < defender.length && remaining > 0; i += 1) {
-    const cell = defender[i]
-    for (let k = 0; k < cell.square && remaining > 0; k += 1) {
+    for (let k = 0; k < defender[i].square && remaining > 0; k += 1) {
       strikes.push({ targetIndex: i, unit: 'square' })
       remaining -= 1
     }
   }
-
   return strikes
-}
-
-function attack(board: Board, triangles: number): {
-  board: Board
-  circlesDestroyed: number
-  squaresDestroyed: number
-} {
-  const strikes = planStrikes(board, triangles)
-  const next = cloneBoard(board)
-  let circlesDestroyed = 0
-  let squaresDestroyed = 0
-
-  for (const strike of strikes) {
-    next[strike.targetIndex][strike.unit] -= 1
-    if (strike.unit === 'circle') circlesDestroyed += 1
-    else squaresDestroyed += 1
-  }
-
-  return { board: next, circlesDestroyed, squaresDestroyed }
-}
-
-function removeTriangles(board: Board): Board {
-  const next = cloneBoard(board)
-  for (const cell of next) {
-    cell.triangle = 0
-  }
-  return next
 }
 
 export function resolveBattle(p0: Board, p1: Board): {
@@ -139,25 +106,35 @@ export function resolveBattle(p0: Board, p1: Board): {
   const t0 = countUnits(p0).triangle
   const t1 = countUnits(p1).triangle
 
-  const attack0 = attack(p1, t0)
-  const attack1 = attack(p0, t1)
+  const strikes0 = planStrikes(p0, p1)
+  const strikes1 = planStrikes(p1, p0)
 
-  const result0: AttackResult = {
-    triangles: t0,
-    circlesDestroyed: attack0.circlesDestroyed,
-    squaresDestroyed: attack0.squaresDestroyed,
+  const next0 = cloneBoard(p0)
+  const next1 = cloneBoard(p1)
+
+  let circles0 = 0
+  let squares0 = 0
+  let circles1 = 0
+  let squares1 = 0
+
+  for (const strike of strikes0) {
+    next1[strike.targetIndex][strike.unit] -= 1
+    if (strike.unit === 'circle') circles0 += 1
+    else squares0 += 1
   }
-  const result1: AttackResult = {
-    triangles: t1,
-    circlesDestroyed: attack1.circlesDestroyed,
-    squaresDestroyed: attack1.squaresDestroyed,
+  for (const strike of strikes1) {
+    next0[strike.targetIndex][strike.unit] -= 1
+    if (strike.unit === 'circle') circles1 += 1
+    else squares1 += 1
   }
 
-  return {
-    p0: removeTriangles(attack1.board),
-    p1: removeTriangles(attack0.board),
-    report: [result0, result1],
-  }
+  for (const cell of next0) cell.triangle = 0
+  for (const cell of next1) cell.triangle = 0
+
+  const result0: AttackResult = { triangles: t0, circlesDestroyed: circles0, squaresDestroyed: squares0 }
+  const result1: AttackResult = { triangles: t1, circlesDestroyed: circles1, squaresDestroyed: squares1 }
+
+  return { p0: next0, p1: next1, report: [result0, result1] }
 }
 
 export function determineOutcome(p0: Board, p1: Board): Outcome {
