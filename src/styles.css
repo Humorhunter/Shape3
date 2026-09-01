@@ -195,3 +195,26 @@ canvas {
   flex-direction: column;
   gap: 6px;
 }
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.btn-row button {
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid #3a3a45;
+  border-radius: 8px;
+  background: #1e1e24;
+  color: #e6e6ef;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-row button.primary {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  font-weight: 600;
+}

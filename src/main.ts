@@ -13,7 +13,7 @@ import {
 } from './game/state'
 import type { Board, Strike, UnitType } from './game/types'
 import { BoardView } from './ui/board'
-import { cellCenter, drawBoard, drawShape, makeBoardRect, UNIT_COLORS, UNIT_LABELS, type BoardRect } from './ui/render'
+import { cellCenter, drawBoard, drawShape, makeBoardRect, UNIT_COLORS, UNIT_LABELS } from './ui/render'
 import './styles.css'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
@@ -188,11 +188,6 @@ function triangleCells(board: Board): number[] {
   return out
 }
 
-function boardCenter(rect: BoardRect): { x: number; y: number } {
-  const size = 3 * rect.cell + 2 * rect.gap
-  return { x: rect.x + size / 2, y: rect.y + size / 2 }
-}
-
 function createBattleAnim(state: GameState): BattleAnim | null {
   const pre = state.preBoards
   if (!pre) return null
@@ -218,6 +213,14 @@ function stopAnim(): void {
 function startBattleAnimation(): void {
   if (battleAnim && battleAnim.stateRef === state) return
   battleAnim = createBattleAnim(state)
+  if (!battleAnim) return
+  if (rafId !== null) cancelAnimationFrame(rafId)
+  rafId = requestAnimationFrame(animLoop)
+}
+
+function replayBattleAnimation(): void {
+  battleAnim = createBattleAnim(state)
+  battlePanel.style.display = 'none'
   if (!battleAnim) return
   if (rafId !== null) cancelAnimationFrame(rafId)
   rafId = requestAnimationFrame(animLoop)
@@ -290,13 +293,8 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, elapsed: number): void {
       const land = launch + BATTLE_TRAVEL_MS
       if (elapsed < launch || elapsed >= land) continue
       const srcIdx = battleAnim.sources[s][i]
-      const strike = battleAnim.strikes[s][i]
-      const from = srcIdx !== undefined
-        ? cellCenter(views[s].rect, srcIdx)
-        : boardCenter(views[s].rect)
-      const to = strike
-        ? cellCenter(views[1 - s].rect, strike.targetIndex)
-        : boardCenter(views[1 - s].rect)
+      const from = cellCenter(views[s].rect, srcIdx)
+      const to = cellCenter(views[1 - s].rect, srcIdx)
       const p = (elapsed - launch) / BATTLE_TRAVEL_MS
       const x = from.x + (to.x - from.x) * p
       const y = from.y + (to.y - from.y) * p
@@ -483,6 +481,16 @@ function showBattle(): void {
   line3.textContent = `剩余生产：玩家 1 ${s0} · 玩家 2 ${s1}`
   el.appendChild(line3)
 
+  const btnRow = document.createElement('div')
+  btnRow.className = 'btn-row'
+
+  const replayBtn = document.createElement('button')
+  replayBtn.className = 'action'
+  replayBtn.textContent = '重播战斗'
+  replayBtn.addEventListener('click', () => {
+    replayBattleAnimation()
+  })
+
   const btn = document.createElement('button')
   btn.className = 'action primary'
   btn.textContent = '确认结算'
@@ -490,7 +498,9 @@ function showBattle(): void {
     state = continueBattle(state)
     render()
   })
-  el.appendChild(btn)
+
+  btnRow.append(replayBtn, btn)
+  el.appendChild(btnRow)
 
   battlePanel.innerHTML = ''
   battlePanel.appendChild(el)
