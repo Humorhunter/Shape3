@@ -405,4 +405,5 @@ canvas.addEventListener('pointerdown', (e) => {
 })
 
 window.addEventListener('resize', resize)
-render()
+window.addEventListener('load', resize)
+resize()

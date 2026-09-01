@@ -67,8 +67,8 @@ export function drawCell(
   cell: Cell,
   selected: boolean,
 ): void {
-  ctx.fillStyle = selected ? '#2b2b33' : '#1e1e24'
-  ctx.strokeStyle = selected ? '#8b8bf0' : '#3a3a45'
+  ctx.fillStyle = selected ? '#33333f' : '#22222b'
+  ctx.strokeStyle = selected ? '#8b8bf0' : '#4e4e63'
   ctx.lineWidth = 2
   roundRect(ctx, x, y, size, size, 8)
   ctx.fill()
