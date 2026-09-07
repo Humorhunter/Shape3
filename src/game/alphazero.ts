@@ -114,9 +114,34 @@ function greedyMoves(agent: AZAgent, self: Board, opp: Board, budget: number, ma
   return moves
 }
 
-// Rollout a full game from (self, opp) both fully placed. Returns +1 (self wins) / -1 / 0.
-function rolloutOutcome(agent: AZAgent, selfBoard: Board, oppBoard: Board, maxPerCell: number): number {
-  let s = cloneBoard(selfBoard)
+// Finish self's remaining placements greedily, then play the whole game to terminal.
+// Returns +1 (self wins) / -1 / 0.
+function rolloutOutcome(
+  agent: AZAgent,
+  selfPartial: Board,
+  selfBudget: number,
+  oppBoard: Board,
+  maxPerCell: number,
+): number {
+  let s = cloneBoard(selfPartial)
+  let b = selfBudget
+  while (b > 0) {
+    const legal = legalActions(s, maxPerCell)
+    if (legal.length === 0) break
+    let bestA = legal[0]
+    let bestQ = -Infinity
+    for (const a of legal) {
+      const cell = Math.floor(a / 3)
+      const unit = a % 3
+      const q = agent.policyLogits(localKey(s, oppBoard, cell, b))[unit]
+      if (q > bestQ) {
+        bestQ = q
+        bestA = a
+      }
+    }
+    s = applyAction(s, bestA, maxPerCell)
+    b -= 1
+  }
   let o = cloneBoard(oppBoard)
   for (let battle = 0; battle < 20; battle += 1) {
     const r = resolveBattle(s, o)
@@ -141,10 +166,20 @@ interface MctsNode {
   W: number[]
   Q: number[]
   children: Map<number, MctsNode>
+  untried: number[]
 }
 
-function newMctsNode(self: Board, budget: number, P: number[]): MctsNode {
-  return { self, budget, P, N: new Array(27).fill(0), W: new Array(27).fill(0), Q: new Array(27).fill(0), children: new Map() }
+function newMctsNode(self: Board, budget: number, P: number[], untried: number[]): MctsNode {
+  return {
+    self,
+    budget,
+    P,
+    N: new Array(27).fill(0),
+    W: new Array(27).fill(0),
+    Q: new Array(27).fill(0),
+    children: new Map(),
+    untried,
+  }
 }
 
 export function azMctsSearch(
@@ -157,12 +192,19 @@ export function azMctsSearch(
   const oppBudget = countSquares(oppPublic)
   const oppFull = applyMoves(oppPublic, aiPlan(oppPublic, self, oppBudget, maxPerCell, 'place'), maxPerCell)
 
-  const root = newMctsNode(cloneBoard(self), budget, priorProbs(agent, self, oppFull, budget, maxPerCell))
+  const root = newMctsNode(
+    cloneBoard(self),
+    budget,
+    priorProbs(agent, self, oppFull, budget, maxPerCell),
+    legalActions(self, maxPerCell),
+  )
 
   for (let i = 0; i < agent.nPlayout; i += 1) {
     let node = root
     const path: { node: MctsNode; action: number }[] = []
-    while (node.budget > 0 && node.children.size > 0) {
+
+    // selection: descend while the node is fully expanded (no untried actions).
+    while (node.budget > 0 && node.untried.length === 0 && node.children.size > 0) {
       const legal = legalActions(node.self, maxPerCell)
       const sumN = node.N.reduce((a, b) => a + b, 0)
       let bestA = -1
@@ -175,17 +217,27 @@ export function azMctsSearch(
         }
       }
       if (bestA < 0) break
-      if (!node.children.has(bestA)) {
-        const childSelf = applyAction(node.self, bestA, maxPerCell)
-        const child = newMctsNode(childSelf, node.budget - 1, priorProbs(agent, childSelf, oppFull, node.budget - 1, maxPerCell))
-        node.children.set(bestA, child)
-      }
       const child = node.children.get(bestA) as MctsNode
       path.push({ node, action: bestA })
       node = child
     }
-    // rollout from the current partial placement: finish it greedily, then play out the game.
-    const v = rolloutOutcome(agent, node.self, oppFull, maxPerCell)
+
+    // expansion: try one untried action.
+    if (node.budget > 0 && node.untried.length > 0) {
+      const action = node.untried.pop() as number
+      const childSelf = applyAction(node.self, action, maxPerCell)
+      const child = newMctsNode(
+        childSelf,
+        node.budget - 1,
+        priorProbs(agent, childSelf, oppFull, node.budget - 1, maxPerCell),
+        legalActions(childSelf, maxPerCell),
+      )
+      node.children.set(action, child)
+      path.push({ node, action })
+      node = child
+    }
+
+    const v = rolloutOutcome(agent, node.self, node.budget, oppFull, maxPerCell)
     for (const edge of path) {
       edge.node.N[edge.action] += 1
       edge.node.W[edge.action] += v
