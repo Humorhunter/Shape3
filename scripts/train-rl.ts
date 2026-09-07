@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { RlAgent, trainSelfPlay, type TrainEpisode } from '../src/game/rl'
+import { evaluate, RlAgent, trainSelfPlay, type TrainEpisode } from '../src/game/rl'
 
 interface Args {
   episodes: number
@@ -9,6 +9,8 @@ interface Args {
   alpha: number
   epsilon: number
   logEvery: number
+  evalEvery: number
+  evalGames: number
 }
 
 function parseArgs(argv: string[]): Args {
@@ -27,12 +29,14 @@ function parseArgs(argv: string[]): Args {
     }
   }
   return {
-    episodes: Number(args.episodes ?? args.e ?? 2000),
+    episodes: Number(args.episodes ?? args.e ?? 5000),
     input: args.input ?? args.i,
     output: resolve(args.output ?? args.o ?? 'public/rl-policy.json'),
     alpha: Number(args.alpha ?? 0.1),
     epsilon: Number(args.epsilon ?? 0.2),
-    logEvery: Number(args['log-every'] ?? 100),
+    logEvery: Number(args['log-every'] ?? 200),
+    evalEvery: Number(args['eval-every'] ?? 500),
+    evalGames: Number(args['eval-games'] ?? 200),
   }
 }
 
@@ -47,52 +51,48 @@ function loadAgent(path?: string): RlAgent {
   }
 }
 
+function fmtWinRate(wins: number, total: number): string {
+  return `${((wins / total) * 100).toFixed(1).padStart(5)}%`
+}
+
 function main(): void {
   const args = parseArgs(process.argv.slice(2))
   const agent = loadAgent(args.input)
   agent.alpha = args.alpha
   agent.epsilon = args.epsilon
 
-  console.log(
-    `训练参数：episodes=${args.episodes} alpha=${args.alpha} epsilon=${args.epsilon} ` +
-      `初始Q表大小=${agent.q.size}`,
-  )
-  console.log(`RL 为玩家1，对战启发式AI（玩家0）`)
+  console.log(`训练参数：episodes=${args.episodes} alpha=${args.alpha} epsilon=${args.epsilon} 初始Q表大小=${agent.q.size}`)
+  console.log(`训练方式：自博弈（RL vs RL），每 ${args.evalEvery} 局用启发式 AI 评估一次胜率`)
 
   const t0 = Date.now()
-  const rolling: Array<'win' | 'loss' | 'draw'> = []
-  let wins = 0
-  let losses = 0
-  let draws = 0
 
-  const result = trainSelfPlay(agent, args.episodes, (info: TrainEpisode) => {
-    if (info.outcome === 'p1') wins += 1
-    else if (info.outcome === 'p0') losses += 1
-    else draws += 1
-    rolling.push(info.outcome === 'p1' ? 'win' : info.outcome === 'p0' ? 'loss' : 'draw')
-    if (rolling.length > 100) rolling.shift()
-
+  trainSelfPlay(agent, args.episodes, (info: TrainEpisode) => {
     if (info.episode % args.logEvery === 0 || info.episode === args.episodes) {
-      const rollingWin = rolling.filter((x) => x === 'win').length / rolling.length
-      const cumWin = wins / info.episode
       console.log(
         `episode ${String(info.episode).padStart(6)} | ` +
-          `胜率(近100)=${(rollingWin * 100).toFixed(1).padStart(5)}% | ` +
-          `累计胜率=${(cumWin * 100).toFixed(1).padStart(5)}% | ` +
-          `avg|TD error|=${info.meanLoss.toFixed(4)} | ` +
-          `Q表=${info.qSize}`,
+          `avg|TD error|=${info.meanLoss.toFixed(4)} | Q表=${info.qSize}`,
+      )
+    }
+    if (info.episode % args.evalEvery === 0 || info.episode === args.episodes) {
+      const { wins, losses, draws } = evaluate(agent, args.evalGames)
+      const total = wins + losses + draws
+      console.log(
+        `  └─ 评估(vs 启发式, ${total} 局)：胜率=${fmtWinRate(wins, total)} 负率=${fmtWinRate(losses, total)} ` +
+          `平局=${draws}`,
       )
     }
   })
 
+  const { wins, losses, draws } = evaluate(agent, args.evalGames)
+  const total = wins + losses + draws
   mkdirSync(dirname(args.output), { recursive: true })
   writeFileSync(args.output, JSON.stringify(agent.toJSON()))
-  const secs = ((Date.now() - t0) / 1000).toFixed(1)
+
+  const secs = ((Date.now() - t0) / 1000).toFixed(2)
   console.log(
-    `训练完成：${args.episodes} 局 W/L/D = ${result.wins}/${result.losses}/${result.draws}，` +
-      `用时 ${secs}s`,
+    `最终评估(vs 启发式, ${total} 局)：W/L/D = ${wins}/${losses}/${draws} 胜率=${fmtWinRate(wins, total)}`,
   )
-  console.log(`参数已保存到 ${args.output}`)
+  console.log(`训练+评估用时 ${secs}s，参数已保存到 ${args.output}`)
 }
 
 main()

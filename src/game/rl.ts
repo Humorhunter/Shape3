@@ -121,29 +121,57 @@ function applyMoves(board: Board, moves: AiMove[], maxPerCell: number): Board {
   return next
 }
 
-function terminalReward(outcome: Outcome): number {
-  if (outcome === 'p1') return 5
-  if (outcome === 'p0') return -5
+function terminalRewardFor(outcome: Outcome, p: PlayerIndex): number {
+  if (outcome === 'p0') return p === 0 ? 5 : -5
+  if (outcome === 'p1') return p === 1 ? 5 : -5
   return 0
 }
 
-function battleReward(prev: [Board, Board], next: [Board, Board]): number {
-  const before = countSquares(prev[1]) - countSquares(prev[0])
-  const after = countSquares(next[1]) - countSquares(next[0])
+function battleRewardFor(prev: [Board, Board], next: [Board, Board], p: PlayerIndex): number {
+  const mine = p
+  const before = countSquares(prev[mine]) - countSquares(prev[1 - mine])
+  const after = countSquares(next[mine]) - countSquares(next[1 - mine])
   return (after - before) * 0.5
 }
 
-export function simulateEpisode(
-  agent: RlAgent,
-  explore: boolean,
-  maxBattles = 20,
-  maxPerCell = 9,
-): Outcome {
-  let boards: [Board, Board] = [emptyBoard(), emptyBoard()]
-  let pending: RlLogEntry[] = []
+interface PlanResult {
+  moves: AiMove[]
+  log: RlLogEntry[]
+}
 
+function planFor(
+  agent: RlAgent | null,
+  boards: [Board, Board],
+  ai: PlayerIndex,
+  budget: number,
+  maxPerCell: number,
+  phase: 'setup' | 'place',
+  explore: boolean,
+): PlanResult {
+  if (phase === 'setup') {
+    return { moves: aiPlan(boards, ai, budget, maxPerCell, 'setup'), log: [] }
+  }
+  if (agent) return planRlMoves(agent, boards, ai, budget, maxPerCell, explore)
+  return { moves: aiPlan(boards, ai, budget, maxPerCell, 'place'), log: [] }
+}
+
+export function playGame(config: {
+  p0Agent: RlAgent | null
+  p1Agent: RlAgent | null
+  p0Explore: boolean
+  p1Explore: boolean
+  maxBattles?: number
+  maxPerCell?: number
+}): Outcome {
+  const maxBattles = config.maxBattles ?? 20
+  const maxPerCell = config.maxPerCell ?? 9
+
+  let boards: [Board, Board] = [emptyBoard(), emptyBoard()]
   boards = [applyMoves(boards[0], aiPlan(boards, 0, 9, maxPerCell, 'setup'), maxPerCell), boards[1]]
   boards = [boards[0], applyMoves(boards[1], aiPlan(boards, 1, 9, maxPerCell, 'setup'), maxPerCell)]
+
+  let pending0: RlLogEntry[] = []
+  let pending1: RlLogEntry[] = []
 
   for (let battle = 0; battle < maxBattles; battle += 1) {
     const prev = [cloneBoard(boards[0]), cloneBoard(boards[1])] as [Board, Board]
@@ -151,36 +179,43 @@ export function simulateEpisode(
     const resolvedBoards = [resolved.p0, resolved.p1] as [Board, Board]
     const outcome = determineOutcome(resolvedBoards[0], resolvedBoards[1])
 
-    if (explore && pending.length > 0) {
-      let reward = battleReward(prev, resolvedBoards)
-      if (outcome !== 'ongoing') reward += terminalReward(outcome)
-      for (const t of pending) agent.update(t.key, t.action, reward)
-      pending = []
+    if (config.p0Agent && pending0.length > 0) {
+      let reward = battleRewardFor(prev, resolvedBoards, 0)
+      if (outcome !== 'ongoing') reward += terminalRewardFor(outcome, 0)
+      for (const t of pending0) config.p0Agent.update(t.key, t.action, reward)
+      pending0 = []
+    }
+    if (config.p1Agent && pending1.length > 0) {
+      let reward = battleRewardFor(prev, resolvedBoards, 1)
+      if (outcome !== 'ongoing') reward += terminalRewardFor(outcome, 1)
+      for (const t of pending1) config.p1Agent.update(t.key, t.action, reward)
+      pending1 = []
     }
 
     boards = resolvedBoards
     if (outcome !== 'ongoing') return outcome
 
-    const budget0 = countSquares(boards[0])
-    const moves0 = aiPlan(boards, 0, budget0, maxPerCell, 'place')
-    boards = [applyMoves(boards[0], moves0, maxPerCell), boards[1]]
+    const plan0 = planFor(config.p0Agent, boards, 0, countSquares(boards[0]), maxPerCell, 'place', config.p0Explore)
+    boards = [applyMoves(boards[0], plan0.moves, maxPerCell), boards[1]]
+    pending0 = plan0.log
 
-    const budget1 = countSquares(boards[1])
-    const planned = planRlMoves(agent, boards, 1, budget1, maxPerCell, explore)
-    boards = [boards[0], applyMoves(boards[1], planned.moves, maxPerCell)]
-    pending = planned.log
+    const plan1 = planFor(config.p1Agent, boards, 1, countSquares(boards[1]), maxPerCell, 'place', config.p1Explore)
+    boards = [boards[0], applyMoves(boards[1], plan1.moves, maxPerCell)]
+    pending1 = plan1.log
   }
 
   const outcome = decideByScore(boards[0], boards[1])
-  if (explore && pending.length > 0) {
-    for (const t of pending) agent.update(t.key, t.action, terminalReward(outcome))
+  if (config.p0Agent && pending0.length > 0) {
+    for (const t of pending0) config.p0Agent.update(t.key, t.action, terminalRewardFor(outcome, 0))
+  }
+  if (config.p1Agent && pending1.length > 0) {
+    for (const t of pending1) config.p1Agent.update(t.key, t.action, terminalRewardFor(outcome, 1))
   }
   return outcome
 }
 
 export interface TrainEpisode {
   episode: number
-  outcome: Outcome
   meanLoss: number
   qSize: number
 }
@@ -189,27 +224,32 @@ export function trainSelfPlay(
   agent: RlAgent,
   episodes: number,
   onEpisode?: (info: TrainEpisode) => void,
-): { wins: number; losses: number; draws: number } {
-  let wins = 0
-  let losses = 0
-  let draws = 0
+): void {
   for (let e = 1; e <= episodes; e += 1) {
     const prevUpdates = agent.countUpdates
     const prevLoss = agent.sumLoss
-    const outcome = simulateEpisode(agent, true)
-    if (outcome === 'p1') wins += 1
-    else if (outcome === 'p0') losses += 1
-    else draws += 1
+    playGame({ p0Agent: agent, p1Agent: agent, p0Explore: true, p1Explore: true })
     if (onEpisode) {
       const du = agent.countUpdates - prevUpdates
       const dl = agent.sumLoss - prevLoss
       onEpisode({
         episode: e,
-        outcome,
         meanLoss: du > 0 ? dl / du : 0,
         qSize: agent.q.size,
       })
     }
+  }
+}
+
+export function evaluate(agent: RlAgent, games: number): { wins: number; losses: number; draws: number } {
+  let wins = 0
+  let losses = 0
+  let draws = 0
+  for (let g = 0; g < games; g += 1) {
+    const outcome = playGame({ p0Agent: null, p1Agent: agent, p0Explore: false, p1Explore: false })
+    if (outcome === 'p1') wins += 1
+    else if (outcome === 'p0') losses += 1
+    else draws += 1
   }
   return { wins, losses, draws }
 }

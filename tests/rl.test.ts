@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { emptyBoard } from '../src/game/engine'
-import { planRlMoves, rlStateKey, simulateEpisode, trainSelfPlay, RlAgent } from '../src/game/rl'
+import { evaluate, planRlMoves, playGame, rlStateKey, trainSelfPlay, RlAgent } from '../src/game/rl'
 
 describe('RL 智能体', () => {
   it('rlStateKey 生成稳定字符串', () => {
@@ -16,9 +16,9 @@ describe('RL 智能体', () => {
     expect(moves.every((m) => m.unit === 'square')).toBe(true)
   })
 
-  it('simulateEpisode 返回合法结果', () => {
+  it('playGame 返回合法结果', () => {
     const agent = new RlAgent()
-    const outcome = simulateEpisode(agent, false)
+    const outcome = playGame({ p0Agent: null, p1Agent: agent, p0Explore: false, p1Explore: false })
     expect(['p0', 'p1', 'draw']).toContain(outcome)
   })
 
@@ -26,5 +26,11 @@ describe('RL 智能体', () => {
     const agent = new RlAgent()
     trainSelfPlay(agent, 50)
     expect(agent.q.size).toBeGreaterThan(0)
+  })
+
+  it('evaluate 统计局数正确', () => {
+    const agent = new RlAgent()
+    const { wins, losses, draws } = evaluate(agent, 20)
+    expect(wins + losses + draws).toBe(20)
   })
 })
