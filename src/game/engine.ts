@@ -78,8 +78,8 @@ export function countTotal(board: Board): number {
   return c.circle + c.triangle + c.square
 }
 
-export function isEliminated(board: Board): boolean {
-  return board.every((cell) => cellTotal(cell) === 0)
+export function hasNoProduction(board: Board): boolean {
+  return countSquares(board) === 0
 }
 
 export function planStrikes(attacker: Board, defender: Board): Strike[] {
@@ -141,8 +141,8 @@ export function resolveBattle(p0: Board, p1: Board): {
 }
 
 export function determineOutcome(p0: Board, p1: Board): Outcome {
-  const e0 = isEliminated(p0)
-  const e1 = isEliminated(p1)
+  const e0 = hasNoProduction(p0)
+  const e1 = hasNoProduction(p1)
   if (e0 && e1) return 'draw'
   if (e0) return 'p1'
   if (e1) return 'p0'

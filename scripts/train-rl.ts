@@ -62,7 +62,7 @@ function main(): void {
   agent.epsilon = args.epsilon
 
   console.log(`训练参数：episodes=${args.episodes} alpha=${args.alpha} epsilon=${args.epsilon} 初始非零权重=${agent.qSize()}`)
-  console.log(`训练方式：混合训练（自博弈 RL vs RL + 对战启发式），每 ${args.evalEvery} 局用启发式 AI 评估一次胜率`)
+  console.log(`训练方式：自博弈（RL vs RL，类 AlphaZero），启发式 AI 仅用于每 ${args.evalEvery} 局评估胜率`)
 
   const t0 = Date.now()
 

@@ -7,7 +7,7 @@ import {
   countUnits,
   determineOutcome,
   emptyBoard,
-  isEliminated,
+  hasNoProduction,
   place,
   removeUnit,
   resolveBattle,
@@ -109,7 +109,7 @@ describe('resolveBattle', () => {
     const p1 = emptyBoard()
     const { p1: next1, report } = resolveBattle(p0, p1)
     expect(report[0]).toEqual({ triangles: 2, circlesDestroyed: 0, squaresDestroyed: 0 })
-    expect(isEliminated(next1)).toBe(true)
+    expect(hasNoProduction(next1)).toBe(true)
   })
 
   it('正方形可被同格三角摧毁（1三角摧毁2方形）', () => {
@@ -140,18 +140,18 @@ describe('resolveBattle', () => {
 })
 
 describe('胜负判定', () => {
-  it('一方归零判负', () => {
+  it('一方生产力归零判负', () => {
     const p0 = board(cell(0, 0, 1))
     const p1 = emptyBoard()
-    expect(isEliminated(p1)).toBe(true)
+    expect(hasNoProduction(p1)).toBe(true)
     expect(determineOutcome(p0, p1)).toBe('p0')
   })
 
-  it('双方归零平局', () => {
+  it('双方生产力归零平局', () => {
     expect(determineOutcome(emptyBoard(), emptyBoard())).toBe('draw')
   })
 
   it('均未归零则进行中', () => {
-    expect(determineOutcome(board(cell(0, 0, 1)), board(cell(1)))).toBe('ongoing')
+    expect(determineOutcome(board(cell(0, 0, 1)), board(cell(1, 0, 1)))).toBe('ongoing')
   })
 })

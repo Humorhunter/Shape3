@@ -270,11 +270,7 @@ export function trainSelfPlay(
 
     const prevUpdates = agent.countUpdates
     const prevLoss = agent.sumLoss
-    if (Math.random() < 0.2) {
-      playGame({ p0Agent: agent, p1Agent: agent, p0Explore: true, p1Explore: true })
-    } else {
-      playGame({ p0Agent: null, p1Agent: agent, p0Explore: false, p1Explore: true })
-    }
+    playGame({ p0Agent: agent, p1Agent: agent, p0Explore: true, p1Explore: true })
     if (onEpisode) {
       const du = agent.countUpdates - prevUpdates
       const dl = agent.sumLoss - prevLoss
