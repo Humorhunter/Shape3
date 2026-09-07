@@ -105,6 +105,12 @@ export class RlAgent {
   qSize(): number {
     return this.q.size
   }
+
+  clone(): RlAgent {
+    const a = new RlAgent()
+    for (const [k, v] of this.q) a.q.set(k, [...v])
+    return a
+  }
 }
 
 function qValue(agent: RlAgent, key: string, unit: number): number {
@@ -295,6 +301,33 @@ export function evaluate(agent: RlAgent, games: number): { wins: number; losses:
     else draws += 1
   }
   return { wins, losses, draws }
+}
+
+export function evaluatePair(
+  a: RlAgent,
+  b: RlAgent,
+  games: number,
+): { wins: number; draws: number; losses: number } {
+  let wins = 0
+  let draws = 0
+  let losses = 0
+  for (let g = 0; g < games; g += 1) {
+    const aIsP0 = g % 2 === 0
+    const outcome = aIsP0
+      ? playGame({ p0Agent: a, p1Agent: b, p0Explore: false, p1Explore: false })
+      : playGame({ p0Agent: b, p1Agent: a, p0Explore: false, p1Explore: false })
+    const aWon = aIsP0 ? outcome === 'p0' : outcome === 'p1'
+    if (aWon) wins += 1
+    else if (outcome === 'draw') draws += 1
+    else losses += 1
+  }
+  return { wins, draws, losses }
+}
+
+export function eloFromScore(score: number, total: number): number {
+  if (total <= 0) return 0
+  const p = Math.max(0.005, Math.min(0.995, score / total))
+  return Math.round(400 * Math.log10(p / (1 - p)))
 }
 
 export function rlPlan(

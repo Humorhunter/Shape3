@@ -47,7 +47,7 @@ npm run preview  # 预览构建产物
 
 ## 训练强化学习 AI（命令行）
 
-RL 采用**自博弈训练**（RL vs RL，类 AlphaZero），启发式 AI 仅用于训练后评估胜率、不参与训练。算法为 **SARSA（表格化，on-policy TD，γ=0.9）**，状态是「每个格子的己方/对方三种兵力数量（分桶）+ 预算」的局部表征，动作为「格子 × 兵种」共 27 个，初始布阵同样由 RL 学习。策略保存在 `public/rl-policy.json`，游戏开局自动加载，无需重新构建。
+RL 采用**自博弈训练**（RL vs RL，类 AlphaZero），算法为 **SARSA（表格化，on-policy TD，γ=0.9）**，状态是「每个格子的己方/对方三种兵力数量（分桶）+ 预算」的局部表征，动作为「格子 × 兵种」共 27 个，初始布阵同样由 RL 学习。策略保存在 `public/rl-policy.json`，游戏开局自动加载，无需重新构建。
 
 ```bash
 # 从零自博弈训练 5000 局，保存到默认路径
@@ -58,17 +58,25 @@ npm run train:rl -- --input public/rl-policy.json --episodes 3000
 
 # 常用参数
 npm run train:rl -- \
-  --episodes 5000 \      # 自博弈训练局数
+  --episodes 5000 \      # 自博弈主训练局数
+  --warmup 200 \         # 预热局数，结束后冻结一个基准策略
   --input public/rl-policy.json \  # 可选：继续训练的基础策略
   --output public/rl-policy.json \ # 保存路径
   --alpha 0.01 \         # 学习率
   --epsilon 0.2 \        # 探索率
   --log-every 200 \      # 每 N 局打印一次 loss
-  --eval-every 500 \     # 每 N 局评估一次胜率（vs 启发式）
-  --eval-games 200       # 每次评估的对局数
+  --eval-every 500 \     # 每 N 局评估一次 Elo
+  --eval-games 200       # 每次 Elo 评估的对局数
 ```
 
-训练时打印平均 `|TD error|`（loss 反馈）与 Q 表大小；每 `--eval-every` 局用启发式 AI 评估一次胜率。训练完成后覆盖 `public/rl-policy.json`，刷新页面即可用新策略对战。
+训练反馈用类 AlphaZero 的 **Elo**：预热后冻结一个基准快照，训练过程中每 `--eval-every` 局让当前策略与之对弈并计算 Elo（不再用启发式胜率，因为它已饱和）。同时打印平均 `|TD error|`（价值收敛）与 Q 表大小。示例：
+
+```
+episode   2000 | avg|TD error|=0.1296 | Q表=12950
+  └─ Elo vs 基准=564（胜率 95.5% / 负率 3.0% / 平局 3）
+```
+
+训练完成后覆盖 `public/rl-policy.json`，刷新页面即可用新策略对战。
 
 ## 目录结构
 

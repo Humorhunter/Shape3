@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { emptyBoard } from '../src/game/engine'
-import { evaluate, planRlMoves, playGame, trainSelfPlay, RlAgent } from '../src/game/rl'
+import { eloFromScore, evaluate, evaluatePair, planRlMoves, playGame, trainSelfPlay, RlAgent } from '../src/game/rl'
 
 describe('RL 智能体', () => {
   it('planRlMoves 尊重预算', () => {
@@ -40,5 +40,27 @@ describe('RL 智能体', () => {
     const restored = RlAgent.fromJSON(json)
     expect(restored.toJSON()).toEqual(json)
     expect(restored.qSize()).toBe(agent.qSize())
+  })
+
+  it('clone 得到独立副本', () => {
+    const agent = new RlAgent()
+    trainSelfPlay(agent, 10)
+    const copy = agent.clone()
+    expect(copy.toJSON()).toEqual(agent.toJSON())
+    copy.values('nonexistent,key')[0] = 999
+    expect(agent.q.has('nonexistent,key')).toBe(false)
+  })
+
+  it('evaluatePair 统计局数正确', () => {
+    const a = new RlAgent()
+    const b = new RlAgent()
+    const { wins, draws, losses } = evaluatePair(a, b, 20)
+    expect(wins + draws + losses).toBe(20)
+  })
+
+  it('eloFromScore 基本性质', () => {
+    expect(eloFromScore(100, 200)).toBe(0)
+    expect(eloFromScore(180, 200)).toBeGreaterThan(200)
+    expect(eloFromScore(20, 200)).toBeLessThan(-200)
   })
 })

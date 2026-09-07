@@ -451,7 +451,7 @@ function runAITurn(): void {
 
 async function loadRlPolicy(): Promise<RlAgent> {
   try {
-    const res = await fetch(`${import.meta.env.BASE_URL}rl-policy.json`)
+    const res = await fetch(`${import.meta.env.BASE_URL}rl-policy.json`, { cache: 'no-store' })
     if (!res.ok) return new RlAgent()
     const json: Record<string, number[]> = await res.json()
     return RlAgent.fromJSON(json)
