@@ -13,6 +13,7 @@ export type PlayerIndex = 0 | 1
 export interface Strike {
   targetIndex: number
   unit: 'circle' | 'square'
+  count: number
 }
 
 export interface AttackResult {

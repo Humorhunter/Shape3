@@ -87,12 +87,12 @@ describe('countUnits / countSquares / countTotal', () => {
 })
 
 describe('resolveBattle', () => {
-  it('三角形攻击对应格子的棋子，圆形优先再方形', () => {
+  it('三角形攻击对应格子的棋子，圆形优先再方形（1三角摧毁2方形）', () => {
     const p0 = board(cell(0, 3, 0))
     const p1 = board(cell(2, 0, 2))
     const { p1: next1, report } = resolveBattle(p0, p1)
-    expect(report[0]).toEqual({ triangles: 3, circlesDestroyed: 2, squaresDestroyed: 1 })
-    expect(next1[0]).toEqual(cell(0, 0, 1))
+    expect(report[0]).toEqual({ triangles: 3, circlesDestroyed: 2, squaresDestroyed: 2 })
+    expect(next1[0]).toEqual(cell(0, 0, 0))
   })
 
   it('只攻击对应格子，不攻击其他格子', () => {
@@ -112,12 +112,12 @@ describe('resolveBattle', () => {
     expect(isEliminated(next1)).toBe(true)
   })
 
-  it('正方形可被同格三角摧毁', () => {
+  it('正方形可被同格三角摧毁（1三角摧毁2方形）', () => {
     const p0 = board(cell(0, 2, 0))
     const p1 = board(cell(1, 0, 2))
     const { p1: next1, report } = resolveBattle(p0, p1)
-    expect(report[0]).toEqual({ triangles: 2, circlesDestroyed: 1, squaresDestroyed: 1 })
-    expect(next1[0]).toEqual(cell(0, 0, 1))
+    expect(report[0]).toEqual({ triangles: 2, circlesDestroyed: 1, squaresDestroyed: 2 })
+    expect(next1[0]).toEqual(cell(0, 0, 0))
   })
 
   it('三角形一律阵亡，不参与防守', () => {

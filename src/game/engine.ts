@@ -1,4 +1,4 @@
-import { BOARD_SIZE } from './constants'
+import { BOARD_SIZE, CIRCLES_PER_TRIANGLE, SQUARES_PER_TRIANGLE } from './constants'
 import type {
   AttackResult,
   BattleReport,
@@ -87,11 +87,14 @@ export function planStrikes(attacker: Board, defender: Board): Strike[] {
   for (let i = 0; i < BOARD_SIZE; i += 1) {
     let remaining = attacker[i].triangle
     for (let k = 0; k < defender[i].circle && remaining > 0; k += 1) {
-      strikes.push({ targetIndex: i, unit: 'circle' })
+      strikes.push({ targetIndex: i, unit: 'circle', count: CIRCLES_PER_TRIANGLE })
       remaining -= 1
     }
-    for (let k = 0; k < defender[i].square && remaining > 0; k += 1) {
-      strikes.push({ targetIndex: i, unit: 'square' })
+    let squares = defender[i].square
+    while (remaining > 0 && squares > 0) {
+      const c = Math.min(SQUARES_PER_TRIANGLE, squares)
+      strikes.push({ targetIndex: i, unit: 'square', count: c })
+      squares -= c
       remaining -= 1
     }
   }
@@ -118,14 +121,14 @@ export function resolveBattle(p0: Board, p1: Board): {
   let squares1 = 0
 
   for (const strike of strikes0) {
-    next1[strike.targetIndex][strike.unit] -= 1
-    if (strike.unit === 'circle') circles0 += 1
-    else squares0 += 1
+    next1[strike.targetIndex][strike.unit] -= strike.count
+    if (strike.unit === 'circle') circles0 += strike.count
+    else squares0 += strike.count
   }
   for (const strike of strikes1) {
-    next0[strike.targetIndex][strike.unit] -= 1
-    if (strike.unit === 'circle') circles1 += 1
-    else squares1 += 1
+    next0[strike.targetIndex][strike.unit] -= strike.count
+    if (strike.unit === 'circle') circles1 += strike.count
+    else squares1 += strike.count
   }
 
   for (const cell of next0) cell.triangle = 0
