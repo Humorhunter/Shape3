@@ -178,7 +178,7 @@ export function azMctsSearch(
   oppPublic: Board,
   budget: number,
   maxPerCell: number,
-): { probs: number[]; rootValue: number } {
+): { probs: number[]; root: MctsNode; oppFull: Board } {
   const oppBudget = countSquares(oppPublic)
   const oppFull = applyMoves(oppPublic, aiPlan(oppPublic, self, oppBudget, maxPerCell, 'place'), maxPerCell)
 
@@ -234,26 +234,39 @@ export function azMctsSearch(
   }
 
   const sum = root.N.reduce((a, b) => a + b, 0) || 1
-  return {
-    probs: root.N.map((n) => n / sum),
-    rootValue: evaluateLeaf(agent, root.self, budget, oppFull, maxPerCell),
-  }
+  return { probs: root.N.map((n) => n / sum), root, oppFull }
 }
 
-function sampleAction(probs: number[], legal: number[], temp: number): number {
+function greedyAction(agent: AZAgent, self: Board, opp: Board, budget: number, maxPerCell: number): number {
+  const legal = legalActions(self, maxPerCell)
+  let bestA = legal[0]
+  let bestQ = -Infinity
+  for (const a of legal) {
+    const cell = Math.floor(a / 3)
+    const unit = a % 3
+    const q = agent.policyLogits(localKey(self, opp, cell, budget))[unit]
+    if (q > bestQ) {
+      bestQ = q
+      bestA = a
+    }
+  }
+  return bestA
+}
+
+function pickByN(legal: number[], N: number[], temp: number): number {
   if (temp === 0) {
     let bestA = legal[0]
-    let bestP = -1
+    let bestN = -1
     for (const a of legal) {
-      if (probs[a] > bestP) {
-        bestP = probs[a]
+      if (N[a] > bestN) {
+        bestN = N[a]
         bestA = a
       }
     }
     return bestA
   }
-  const weights = legal.map((a) => Math.pow(probs[a] + 1e-9, 1 / temp))
-  const total = weights.reduce((a, b) => a + b, 0)
+  const weights = legal.map((a) => Math.pow(N[a] + 1e-9, 1 / temp))
+  const total = weights.reduce((a, b) => a + b, 0) || 1
   let r = Math.random() * total
   for (let i = 0; i < legal.length; i += 1) {
     r -= weights[i]
@@ -262,14 +275,31 @@ function sampleAction(probs: number[], legal: number[], temp: number): number {
   return legal[legal.length - 1]
 }
 
-function samplePlacement(self: Board, budget: number, maxPerCell: number, probs: number[], temp: number): AiMove[] {
-  let s = cloneBoard(self)
+// 沿着 MCTS 树逐层下探，每层用该节点的访问频次选动作（而不是复用根节点分布），
+// 树耗尽后用策略贪心补完剩余布阵。
+function extractPlacement(
+  agent: AZAgent,
+  root: MctsNode,
+  oppFull: Board,
+  maxPerCell: number,
+  temp: number,
+): AiMove[] {
   const moves: AiMove[] = []
-  let b = budget
+  let node: MctsNode = root
+  while (node.budget > 0 && node.children.size > 0) {
+    const legal = legalActions(node.self, maxPerCell)
+    if (legal.reduce((s, a) => s + node.N[a], 0) === 0) break
+    const a = pickByN(legal, node.N, temp)
+    moves.push({ index: Math.floor(a / 3), unit: UNIT_TYPES[a % 3] })
+    const child = node.children.get(a)
+    if (!child) break
+    node = child
+  }
+  let s = cloneBoard(node.self)
+  let b = node.budget
   while (b > 0) {
-    const legal = legalActions(s, maxPerCell)
-    if (legal.length === 0) break
-    const a = sampleAction(probs, legal, temp)
+    if (legalActions(s, maxPerCell).length === 0) break
+    const a = greedyAction(agent, s, oppFull, b, maxPerCell)
     moves.push({ index: Math.floor(a / 3), unit: UNIT_TYPES[a % 3] })
     s = applyAction(s, a, maxPerCell)
     b -= 1
@@ -278,8 +308,8 @@ function samplePlacement(self: Board, budget: number, maxPerCell: number, probs:
 }
 
 export function azPlan(agent: AZAgent, self: Board, oppPublic: Board, budget: number, maxPerCell: number): AiMove[] {
-  const { probs } = azMctsSearch(agent, self, oppPublic, budget, maxPerCell)
-  return samplePlacement(self, budget, maxPerCell, probs, 0)
+  const { root, oppFull } = azMctsSearch(agent, self, oppPublic, budget, maxPerCell)
+  return extractPlacement(agent, root, oppFull, maxPerCell, 0)
 }
 
 export interface PolicySample {
@@ -308,7 +338,7 @@ export function azSelfPlay(agent: AZAgent, maxPerCell: number): SelfPlayData {
   const playPhase = (ai: PlayerIndex, budget: number, temp: number): void => {
     const self = boards[ai]
     const oppPublic = settled[1 - ai]
-    const { probs } = azMctsSearch(agent, self, oppPublic, budget, maxPerCell)
+    const { probs, root, oppFull } = azMctsSearch(agent, self, oppPublic, budget, maxPerCell)
     const seen = new Set<string>()
     for (const a of legalActions(self, maxPerCell)) {
       const cell = Math.floor(a / 3)
@@ -319,7 +349,7 @@ export function azSelfPlay(agent: AZAgent, maxPerCell: number): SelfPlayData {
       const s = t[0] + t[1] + t[2] || 1
       policySamples.push({ key, target: [t[0] / s, t[1] / s, t[2] / s] })
     }
-    boards[ai] = applyMoves(self, samplePlacement(self, budget, maxPerCell, probs, temp), maxPerCell)
+    boards[ai] = applyMoves(self, extractPlacement(agent, root, oppFull, maxPerCell, temp), maxPerCell)
   }
 
   const recordValue = (): void => {
