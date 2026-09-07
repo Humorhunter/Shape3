@@ -32,7 +32,7 @@ function parseArgs(argv: string[]): Args {
     episodes: Number(args.episodes ?? args.e ?? 5000),
     input: args.input ?? args.i,
     output: resolve(args.output ?? args.o ?? 'public/rl-policy.json'),
-    alpha: Number(args.alpha ?? 0.1),
+    alpha: Number(args.alpha ?? 0.01),
     epsilon: Number(args.epsilon ?? 0.2),
     logEvery: Number(args['log-every'] ?? 200),
     evalEvery: Number(args['eval-every'] ?? 500),
@@ -61,8 +61,8 @@ function main(): void {
   agent.alpha = args.alpha
   agent.epsilon = args.epsilon
 
-  console.log(`训练参数：episodes=${args.episodes} alpha=${args.alpha} epsilon=${args.epsilon} 初始Q表大小=${agent.q.size}`)
-  console.log(`训练方式：自博弈（RL vs RL），每 ${args.evalEvery} 局用启发式 AI 评估一次胜率`)
+  console.log(`训练参数：episodes=${args.episodes} alpha=${args.alpha} epsilon=${args.epsilon} 初始非零权重=${agent.qSize()}`)
+  console.log(`训练方式：混合训练（自博弈 RL vs RL + 对战启发式），每 ${args.evalEvery} 局用启发式 AI 评估一次胜率`)
 
   const t0 = Date.now()
 

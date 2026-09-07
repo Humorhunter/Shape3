@@ -47,10 +47,10 @@ npm run preview  # 预览构建产物
 
 ## 训练强化学习 AI（命令行）
 
-RL 采用**自博弈**训练（RL vs RL），并定期用启发式 AI 评估胜率。策略保存在 `public/rl-policy.json`，游戏开局自动加载，无需重新构建。
+RL 采用**混合训练**：80% 对战启发式 AI、20% 自博弈（RL vs RL），避免策略坍缩到纯防守平局。算法为 **SARSA（表格化，on-policy TD，γ=0.9）**，状态是「每个格子的己方/对方三种兵力数量（分桶）+ 预算」的局部表征，动作为「格子 × 兵种」共 27 个，初始布阵同样由 RL 学习。策略保存在 `public/rl-policy.json`，游戏开局自动加载，无需重新构建。
 
 ```bash
-# 从零自博弈训练 5000 局，保存到默认路径
+# 从零训练 5000 局，保存到默认路径
 npm run train:rl -- --episodes 5000
 
 # 在已有策略基础上继续训练
@@ -58,10 +58,10 @@ npm run train:rl -- --input public/rl-policy.json --episodes 3000
 
 # 常用参数
 npm run train:rl -- \
-  --episodes 5000 \      # 自博弈训练局数
+  --episodes 5000 \      # 训练局数（混合自博弈 + 对战启发式）
   --input public/rl-policy.json \  # 可选：继续训练的基础策略
   --output public/rl-policy.json \ # 保存路径
-  --alpha 0.1 \          # 学习率
+  --alpha 0.01 \         # 学习率
   --epsilon 0.2 \        # 探索率
   --log-every 200 \      # 每 N 局打印一次 loss
   --eval-every 500 \     # 每 N 局评估一次胜率（vs 启发式）
