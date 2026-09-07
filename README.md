@@ -80,13 +80,13 @@ episode   2000 | avg|TD error|=0.1296 | Q表=12950
 
 ## 训练 AlphaZero 智能体（命令行）
 
-类 AlphaZero 的 **PUCT MCTS 自博弈 + 策略迭代**：MCTS 用策略作为先验搜索，训练时把策略逼近「MCTS 访问频次分布」（policy iteration）。策略保存在 `public/az-policy.json`。
+类 AlphaZero 的 **PUCT MCTS 自博弈 + 策略迭代 + 价值函数**（对照经典训练管线）：MCTS 用「策略网络（先验）+ 价值函数（叶子评估，替代 rollout）」搜索，自博弈收集 `(状态, 访问频次分布, 胜负)` 存入回放缓冲，mini-batch 训练——策略做交叉熵、价值做 MSE。策略保存在 `public/az-policy.json`。
 
 ```bash
-npm run train:az -- --episodes 500 --playout 100 --c-puct 3 --lr-policy 0.02
+npm run train:az -- --episodes 500 --playout 100 --c-puct 3 --lr-policy 0.02 --lr-value 0.05
 ```
 
-训练时打印 `policy loss`（交叉熵）与策略表大小，作为学习进程反馈。
+训练时打印 `policy loss`（交叉熵）与 `value loss`（MSE）作为学习进程反馈。
 
 ## 目录结构
 

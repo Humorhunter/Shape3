@@ -1,10 +1,30 @@
-import { cellTotal, cloneBoard, countSquares, determineOutcome, emptyBoard, place, resolveBattle } from './engine'
+import { cellTotal, cloneBoard, countSquares, countUnits, determineOutcome, emptyBoard, place, resolveBattle } from './engine'
 import { decideByScore } from './state'
 import { localKey, N_CELLS } from './rl'
 import { aiPlan, type AiMove } from './ai'
-import type { Board, UnitType, PlayerIndex } from './types'
+import type { Board, UnitType, Outcome, PlayerIndex } from './types'
 
 const UNIT_TYPES: UnitType[] = ['circle', 'triangle', 'square']
+
+function bucket(n: number): number {
+  if (n <= 0) return 0
+  if (n === 1) return 1
+  if (n === 2) return 2
+  return 3
+}
+
+function valueKey(self: Board, opp: Board): string {
+  const s = countUnits(self)
+  const o = countUnits(opp)
+  return [
+    bucket(s.circle),
+    bucket(s.triangle),
+    bucket(s.square),
+    bucket(o.circle),
+    bucket(o.triangle),
+    bucket(o.square),
+  ].join(',')
+}
 
 function legalActions(self: Board, maxPerCell: number): number[] {
   const out: number[] = []
@@ -28,26 +48,34 @@ function applyMoves(board: Board, moves: AiMove[], maxPerCell: number): Board {
 
 export class AZAgent {
   policy = new Map<string, number[]>()
+  value = new Map<string, number>()
   cPuct = 3
   nPlayout = 200
   lrPolicy = 0.02
+  lrValue = 0.05
 
   policyLogits(key: string): number[] {
     return this.policy.get(key) ?? [0, 0, 0]
   }
 
-  toJSON(): Record<string, number[]> {
+  valueOf(key: string): number {
+    return this.value.get(key) ?? 0
+  }
+
+  toJSON(): { policy: Record<string, number[]>; value: Record<string, number> } {
     const policy: Record<string, number[]> = {}
     for (const [k, v] of this.policy) policy[k] = v.map((x) => Math.round(x * 1000) / 1000)
-    return policy
+    const value: Record<string, number> = {}
+    for (const [k, v] of this.value) value[k] = Math.round(v * 1000) / 1000
+    return { policy, value }
   }
 
   static fromJSON(json: unknown): AZAgent {
     const a = new AZAgent()
     if (json && typeof json === 'object') {
-      for (const [k, v] of Object.entries(json as Record<string, number[]>)) {
-        if (Array.isArray(v)) a.policy.set(k, [...v])
-      }
+      const j = json as { policy?: Record<string, number[]>; value?: Record<string, number> }
+      if (j.policy) for (const [k, v] of Object.entries(j.policy)) a.policy.set(k, [...v])
+      if (j.value) for (const [k, v] of Object.entries(j.value)) a.value.set(k, v)
     }
     return a
   }
@@ -55,11 +83,12 @@ export class AZAgent {
   clone(): AZAgent {
     const a = new AZAgent()
     for (const [k, v] of this.policy) a.policy.set(k, [...v])
+    for (const [k, v] of this.value) a.value.set(k, v)
     return a
   }
 
   qSize(): number {
-    return this.policy.size
+    return this.policy.size + this.value.size
   }
 }
 
@@ -89,38 +118,11 @@ function priorProbs(agent: AZAgent, self: Board, opp: Board, budget: number, max
   return probs
 }
 
-function greedyMoves(agent: AZAgent, self: Board, opp: Board, budget: number, maxPerCell: number): AiMove[] {
-  let s = cloneBoard(self)
-  const moves: AiMove[] = []
-  let b = budget
-  while (b > 0) {
-    const legal = legalActions(s, maxPerCell)
-    if (legal.length === 0) break
-    let bestA = legal[0]
-    let bestQ = -Infinity
-    for (const a of legal) {
-      const cell = Math.floor(a / 3)
-      const unit = a % 3
-      const q = agent.policyLogits(localKey(s, opp, cell, b))[unit]
-      if (q > bestQ) {
-        bestQ = q
-        bestA = a
-      }
-    }
-    moves.push({ index: Math.floor(bestA / 3), unit: UNIT_TYPES[bestA % 3] })
-    s = applyAction(s, bestA, maxPerCell)
-    b -= 1
-  }
-  return moves
-}
-
-// Finish self's remaining placements greedily, then play the whole game to terminal.
-// Returns +1 (self wins) / -1 / 0.
-function rolloutOutcome(
+function evaluateLeaf(
   agent: AZAgent,
   selfPartial: Board,
   selfBudget: number,
-  oppBoard: Board,
+  oppFull: Board,
   maxPerCell: number,
 ): number {
   let s = cloneBoard(selfPartial)
@@ -133,7 +135,7 @@ function rolloutOutcome(
     for (const a of legal) {
       const cell = Math.floor(a / 3)
       const unit = a % 3
-      const q = agent.policyLogits(localKey(s, oppBoard, cell, b))[unit]
+      const q = agent.policyLogits(localKey(s, oppFull, cell, b))[unit]
       if (q > bestQ) {
         bestQ = q
         bestA = a
@@ -142,20 +144,8 @@ function rolloutOutcome(
     s = applyAction(s, bestA, maxPerCell)
     b -= 1
   }
-  let o = cloneBoard(oppBoard)
-  for (let battle = 0; battle < 20; battle += 1) {
-    const r = resolveBattle(s, o)
-    const ns = r.p0
-    const no = r.p1
-    const out = determineOutcome(ns, no)
-    if (out !== 'ongoing') return out === 'p0' ? 1 : out === 'p1' ? -1 : 0
-    const s2 = applyMoves(ns, greedyMoves(agent, ns, no, countSquares(ns), maxPerCell), maxPerCell)
-    const o2 = applyMoves(no, greedyMoves(agent, no, s2, countSquares(no), maxPerCell), maxPerCell)
-    s = s2
-    o = o2
-  }
-  const out = decideByScore(s, o)
-  return out === 'p0' ? 1 : out === 'p1' ? -1 : 0
+  const r = resolveBattle(s, oppFull)
+  return agent.valueOf(valueKey(r.p0, r.p1))
 }
 
 interface MctsNode {
@@ -188,7 +178,7 @@ export function azMctsSearch(
   oppPublic: Board,
   budget: number,
   maxPerCell: number,
-): { probs: number[] } {
+): { probs: number[]; rootValue: number } {
   const oppBudget = countSquares(oppPublic)
   const oppFull = applyMoves(oppPublic, aiPlan(oppPublic, self, oppBudget, maxPerCell, 'place'), maxPerCell)
 
@@ -203,7 +193,6 @@ export function azMctsSearch(
     let node = root
     const path: { node: MctsNode; action: number }[] = []
 
-    // selection: descend while the node is fully expanded (no untried actions).
     while (node.budget > 0 && node.untried.length === 0 && node.children.size > 0) {
       const legal = legalActions(node.self, maxPerCell)
       const sumN = node.N.reduce((a, b) => a + b, 0)
@@ -222,7 +211,6 @@ export function azMctsSearch(
       node = child
     }
 
-    // expansion: try one untried action.
     if (node.budget > 0 && node.untried.length > 0) {
       const action = node.untried.pop() as number
       const childSelf = applyAction(node.self, action, maxPerCell)
@@ -237,7 +225,7 @@ export function azMctsSearch(
       node = child
     }
 
-    const v = rolloutOutcome(agent, node.self, node.budget, oppFull, maxPerCell)
+    const v = evaluateLeaf(agent, node.self, node.budget, oppFull, maxPerCell)
     for (const edge of path) {
       edge.node.N[edge.action] += 1
       edge.node.W[edge.action] += v
@@ -246,7 +234,10 @@ export function azMctsSearch(
   }
 
   const sum = root.N.reduce((a, b) => a + b, 0) || 1
-  return { probs: root.N.map((n) => n / sum) }
+  return {
+    probs: root.N.map((n) => n / sum),
+    rootValue: evaluateLeaf(agent, root.self, budget, oppFull, maxPerCell),
+  }
 }
 
 function sampleAction(probs: number[], legal: number[], temp: number): number {
@@ -291,15 +282,28 @@ export function azPlan(agent: AZAgent, self: Board, oppPublic: Board, budget: nu
   return samplePlacement(self, budget, maxPerCell, probs, 0)
 }
 
-interface PolicySample {
+export interface PolicySample {
   key: string
   target: number[]
 }
 
-export function azSelfPlay(agent: AZAgent, maxPerCell: number): PolicySample[] {
+export interface ValueSample {
+  key: string
+  z: number
+}
+
+export interface SelfPlayData {
+  outcome: Outcome
+  policySamples: PolicySample[]
+  valueSamples: ValueSample[]
+}
+
+export function azSelfPlay(agent: AZAgent, maxPerCell: number): SelfPlayData {
   let boards: [Board, Board] = [emptyBoard(), emptyBoard()]
   let settled: [Board, Board] = [emptyBoard(), emptyBoard()]
   const policySamples: PolicySample[] = []
+  const valueSamples: ValueSample[] = []
+  let outcome: Outcome = 'ongoing'
 
   const playPhase = (ai: PlayerIndex, budget: number, temp: number): void => {
     const self = boards[ai]
@@ -318,6 +322,11 @@ export function azSelfPlay(agent: AZAgent, maxPerCell: number): PolicySample[] {
     boards[ai] = applyMoves(self, samplePlacement(self, budget, maxPerCell, probs, temp), maxPerCell)
   }
 
+  const recordValue = (): void => {
+    valueSamples.push({ key: valueKey(boards[0], boards[1]), z: 0 })
+    valueSamples.push({ key: valueKey(boards[1], boards[0]), z: 0 })
+  }
+
   playPhase(0, 9, 1)
   playPhase(1, 9, 1)
 
@@ -325,34 +334,103 @@ export function azSelfPlay(agent: AZAgent, maxPerCell: number): PolicySample[] {
     const r = resolveBattle(boards[0], boards[1])
     boards = [r.p0, r.p1]
     settled = [cloneBoard(r.p0), cloneBoard(r.p1)]
-    if (determineOutcome(boards[0], boards[1]) !== 'ongoing') break
+    recordValue()
+    const o = determineOutcome(boards[0], boards[1])
+    if (o !== 'ongoing') {
+      outcome = o
+      break
+    }
     playPhase(0, countSquares(boards[0]), 1)
     playPhase(1, countSquares(boards[1]), 1)
   }
+  if (outcome === 'ongoing') outcome = decideByScore(boards[0], boards[1])
 
-  return policySamples
+  // Assign z. valueSamples alternate p0, p1 per recordValue call.
+  valueSamples.forEach((s, i) => {
+    const player = i % 2 === 0 ? 0 : 1
+    s.z = outcome === 'draw' ? 0 : outcome === `p${player}` ? 1 : -1
+  })
+
+  return { outcome, policySamples, valueSamples }
 }
 
-export function azTrainStep(agent: AZAgent, samples: PolicySample[]): number {
-  let loss = 0
-  for (const s of samples) {
-    const logits = agent.policyLogits(s.key)
-    const probs = softmax(logits)
-    const newLogits = logits.slice()
-    for (let u = 0; u < 3; u += 1) {
-      newLogits[u] += agent.lrPolicy * (s.target[u] - probs[u])
+export interface BatchResult {
+  policyLoss: number
+  valueLoss: number
+}
+
+export function azTrainStep(agent: AZAgent, data: SelfPlayData[]): BatchResult {
+  let policyLoss = 0
+  let valueLoss = 0
+  let pCount = 0
+  let vCount = 0
+
+  for (const d of data) {
+    for (const s of d.policySamples) {
+      const logits = agent.policyLogits(s.key)
+      const probs = softmax(logits)
+      const newLogits = logits.slice()
+      for (let u = 0; u < 3; u += 1) {
+        newLogits[u] += agent.lrPolicy * (s.target[u] - probs[u])
+      }
+      agent.policy.set(s.key, newLogits)
+      const idx = s.target.indexOf(Math.max(...s.target))
+      policyLoss += -Math.log(Math.max(1e-9, probs[idx]))
+      pCount += 1
     }
-    agent.policy.set(s.key, newLogits)
-    const idx = s.target.indexOf(Math.max(...s.target))
-    loss += -Math.log(Math.max(1e-9, probs[idx]))
+    for (const s of d.valueSamples) {
+      const old = agent.valueOf(s.key)
+      const delta = s.z - old
+      agent.value.set(s.key, old + agent.lrValue * delta)
+      valueLoss += delta * delta
+      vCount += 1
+    }
   }
-  return loss / (samples.length || 1)
+
+  return {
+    policyLoss: policyLoss / (pCount || 1),
+    valueLoss: valueLoss / (vCount || 1),
+  }
 }
 
-export function azTrain(agent: AZAgent, episodes: number, onEpisode?: (e: number) => void): void {
+export class ReplayBuffer {
+  private data: SelfPlayData[] = []
+  private capacity: number
+
+  constructor(capacity = 10000) {
+    this.capacity = capacity
+  }
+
+  push(d: SelfPlayData): void {
+    this.data.push(d)
+    if (this.data.length > this.capacity) this.data.shift()
+  }
+
+  sample(batchSize: number): SelfPlayData[] {
+    const out: SelfPlayData[] = []
+    const n = Math.min(batchSize, this.data.length)
+    const idx = new Set<number>()
+    while (idx.size < n) idx.add(Math.floor(Math.random() * this.data.length))
+    for (const i of idx) out.push(this.data[i])
+    return out
+  }
+
+  size(): number {
+    return this.data.length
+  }
+}
+
+export function azTrain(
+  agent: AZAgent,
+  episodes: number,
+  onEpisode?: (e: number, loss: BatchResult) => void,
+): void {
+  const buffer = new ReplayBuffer(10000)
   for (let e = 1; e <= episodes; e += 1) {
-    const samples = azSelfPlay(agent, 9)
-    azTrainStep(agent, samples)
-    if (onEpisode) onEpisode(e)
+    const data = azSelfPlay(agent, 9)
+    buffer.push(data)
+    const batch = buffer.sample(64)
+    const loss = azTrainStep(agent, batch)
+    if (onEpisode) onEpisode(e, loss)
   }
 }

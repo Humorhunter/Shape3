@@ -1,12 +1,13 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { AZAgent, azTrainStep, azSelfPlay } from '../src/game/alphazero'
+import { AZAgent, azTrain, type BatchResult } from '../src/game/alphazero'
 
 interface Args {
   episodes: number
   playout: number
   cPuct: number
   lrPolicy: number
+  lrValue: number
   input?: string
   output: string
   logEvery: number
@@ -32,6 +33,7 @@ function parseArgs(argv: string[]): Args {
     playout: Number(args.playout ?? 100),
     cPuct: Number(args['c-puct'] ?? 3),
     lrPolicy: Number(args['lr-policy'] ?? 0.02),
+    lrValue: Number(args['lr-value'] ?? 0.05),
     input: args.input ?? args.i,
     output: resolve(args.output ?? args.o ?? 'public/az-policy.json'),
     logEvery: Number(args['log-every'] ?? 20),
@@ -54,31 +56,34 @@ function main(): void {
   agent.nPlayout = args.playout
   agent.cPuct = args.cPuct
   agent.lrPolicy = args.lrPolicy
+  agent.lrValue = args.lrValue
 
-  console.log(`AlphaZero 训练：episodes=${args.episodes} playout=${args.playout} c_puct=${args.cPuct} lr=${args.lrPolicy}`)
-  console.log(`训练方式：MCTS(PUCT) 自博弈 + 策略迭代（policy ← 访问频次）`)
+  console.log(
+    `AlphaZero 训练：episodes=${args.episodes} playout=${args.playout} c_puct=${args.cPuct} ` +
+      `lr_policy=${args.lrPolicy} lr_value=${args.lrValue}`,
+  )
+  console.log(`训练方式：MCTS(PUCT) 自博弈 + 策略迭代 + 价值函数（回放缓冲 + mini-batch）`)
 
   const t0 = Date.now()
-  let totalLoss = 0
-  let samples = 0
-  for (let e = 1; e <= args.episodes; e += 1) {
-    const data = azSelfPlay(agent, 9)
-    const loss = azTrainStep(agent, data)
-    totalLoss += loss
-    samples += 1
+  let lastLoss: BatchResult = { policyLoss: 0, valueLoss: 0 }
+
+  azTrain(agent, args.episodes, (e, loss) => {
+    lastLoss = loss
     if (e % args.logEvery === 0 || e === args.episodes) {
-      const avgLoss = totalLoss / samples
       console.log(
         `episode ${String(e).padStart(5)} | ` +
-          `policy loss=${avgLoss.toFixed(4)} | 策略表大小=${agent.qSize()} | ` +
-          `用时 ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+          `policy loss=${loss.policyLoss.toFixed(4)} | value loss=${loss.valueLoss.toFixed(4)} | ` +
+          `表大小=${agent.qSize()} | 用时 ${((Date.now() - t0) / 1000).toFixed(1)}s`,
       )
     }
-  }
+  })
 
   mkdirSync(dirname(args.output), { recursive: true })
   writeFileSync(args.output, JSON.stringify(agent.toJSON()))
-  console.log(`训练完成，用时 ${((Date.now() - t0) / 1000).toFixed(1)}s，策略已保存到 ${args.output}`)
+  console.log(
+    `训练完成：最终 policy loss=${lastLoss.policyLoss.toFixed(4)} value loss=${lastLoss.valueLoss.toFixed(4)}，` +
+      `用时 ${((Date.now() - t0) / 1000).toFixed(1)}s，策略已保存到 ${args.output}`,
+  )
 }
 
 main()
