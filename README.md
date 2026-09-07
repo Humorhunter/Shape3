@@ -45,6 +45,29 @@ npm run test     # 运行单元测试
 npm run preview  # 预览构建产物
 ```
 
+## 训练强化学习 AI（命令行）
+
+RL 对手的策略保存在 `public/rl-policy.json`，游戏开局会自动加载，无需重新构建。
+
+```bash
+# 从零训练 5000 局，保存到默认路径 public/rl-policy.json
+npm run train:rl -- --episodes 5000
+
+# 在已有策略基础上继续训练
+npm run train:rl -- --input public/rl-policy.json --episodes 3000
+
+# 常用参数
+npm run train:rl -- \
+  --episodes 5000 \      # 训练局数
+  --input public/rl-policy.json \  # 可选：继续训练的基础策略
+  --output public/rl-policy.json \ # 保存路径
+  --alpha 0.1 \          # 学习率
+  --epsilon 0.2 \        # 探索率
+  --log-every 100        # 每 N 局打印一次进度
+```
+
+训练时会实时打印：胜率（近 100 局 / 累计）、平均 `|TD error|`（作为 loss 反馈）、Q 表大小。训练完成后覆盖 `public/rl-policy.json`，刷新页面即可用新策略对战。
+
 ## 目录结构
 
 ```
@@ -61,6 +84,10 @@ src/
 │  └─ board.ts      棋盘视图与命中检测
 ├─ styles.css
 └─ main.ts          入口与游戏编排
+scripts/
+└─ train-rl.ts      RL 训练命令行入口
+public/
+└─ rl-policy.json   RL 训练出的策略参数（线上自动加载）
 tests/
 ├─ engine.test.ts   规则引擎测试
 ├─ ai.test.ts       AI 决策测试

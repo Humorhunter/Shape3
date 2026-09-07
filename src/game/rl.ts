@@ -32,6 +32,8 @@ export class RlAgent {
   q = new Map<string, number[]>()
   alpha = 0.1
   epsilon = 0.2
+  sumLoss = 0
+  countUpdates = 0
 
   values(key: string): number[] {
     let v = this.q.get(key)
@@ -54,9 +56,29 @@ export class RlAgent {
     return best
   }
 
-  update(key: string, action: number, reward: number): void {
+  update(key: string, action: number, reward: number): number {
     const v = this.values(key)
-    v[action] += this.alpha * (reward - v[action])
+    const td = reward - v[action]
+    v[action] += this.alpha * td
+    this.sumLoss += Math.abs(td)
+    this.countUpdates += 1
+    return Math.abs(td)
+  }
+
+  toJSON(): Record<string, number[]> {
+    const obj: Record<string, number[]> = {}
+    for (const [k, v] of this.q) {
+      obj[k] = [...v]
+    }
+    return obj
+  }
+
+  static fromJSON(json: Record<string, number[]>): RlAgent {
+    const agent = new RlAgent()
+    for (const [k, v] of Object.entries(json)) {
+      if (Array.isArray(v)) agent.q.set(k, [...v])
+    }
+    return agent
   }
 }
 
@@ -156,10 +178,40 @@ export function simulateEpisode(
   return outcome
 }
 
-export function trainSelfPlay(agent: RlAgent, episodes: number): void {
-  for (let e = 0; e < episodes; e += 1) {
-    simulateEpisode(agent, true)
+export interface TrainEpisode {
+  episode: number
+  outcome: Outcome
+  meanLoss: number
+  qSize: number
+}
+
+export function trainSelfPlay(
+  agent: RlAgent,
+  episodes: number,
+  onEpisode?: (info: TrainEpisode) => void,
+): { wins: number; losses: number; draws: number } {
+  let wins = 0
+  let losses = 0
+  let draws = 0
+  for (let e = 1; e <= episodes; e += 1) {
+    const prevUpdates = agent.countUpdates
+    const prevLoss = agent.sumLoss
+    const outcome = simulateEpisode(agent, true)
+    if (outcome === 'p1') wins += 1
+    else if (outcome === 'p0') losses += 1
+    else draws += 1
+    if (onEpisode) {
+      const du = agent.countUpdates - prevUpdates
+      const dl = agent.sumLoss - prevLoss
+      onEpisode({
+        episode: e,
+        outcome,
+        meanLoss: du > 0 ? dl / du : 0,
+        qSize: agent.q.size,
+      })
+    }
   }
+  return { wins, losses, draws }
 }
 
 export function rlPlan(

@@ -1,6 +1,6 @@
 import { aiPlan } from './game/ai'
 import { cloneBoard, countSquares, countTotal, countUnits, planStrikes, removeUnit } from './game/engine'
-import { RlAgent, rlPlan, trainSelfPlay } from './game/rl'
+import { RlAgent, rlPlan } from './game/rl'
 import {
   canCommit,
   commit,
@@ -449,6 +449,17 @@ function runAITurn(): void {
   render()
 }
 
+async function loadRlPolicy(): Promise<RlAgent> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}rl-policy.json`)
+    if (!res.ok) return new RlAgent()
+    const json: Record<string, number[]> = await res.json()
+    return RlAgent.fromJSON(json)
+  } catch {
+    return new RlAgent()
+  }
+}
+
 function showTitle(): void {
   const el = document.createElement('div')
   el.className = 'dialog'
@@ -534,15 +545,14 @@ function showTitle(): void {
     document.createElement('br'),
     start,
   )
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault()
     const mode: GameMode = elimRadio.checked ? 'elimination' : 'rounds'
     const opponent: Opponent = pvpRadio.checked ? 'human' : pveRadio.checked ? 'ai' : 'rl'
     const maxRounds = Math.max(1, Number(roundsInput.value) || 10)
     const maxPerCell = Math.max(1, Number(capInput.value) || 9)
     if (opponent === 'rl') {
-      rlAgent = new RlAgent()
-      trainSelfPlay(rlAgent, 200)
+      rlAgent = await loadRlPolicy()
     }
     state = createGame(mode, maxRounds, maxPerCell, opponent)
     render()

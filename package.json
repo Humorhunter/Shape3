@@ -8,9 +8,11 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "train:rl": "tsx scripts/train-rl.ts"
   },
   "devDependencies": {
+    "tsx": "^4.19.2",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
     "vitest": "^3.1.1"
