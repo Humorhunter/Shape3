@@ -11,7 +11,7 @@ import {
 import type { BattleReport, Board, Outcome, PlayerIndex, UnitType } from './types'
 
 export type GameMode = 'elimination' | 'rounds'
-export type Opponent = 'human' | 'ai' | 'rl'
+export type Opponent = 'human' | 'ai' | 'rl' | 'az'
 export type Phase = 'title' | 'setup' | 'place' | 'battle' | 'gameover'
 export type Turn = 'place' | 'handover'
 export type HandoverTarget = 'setupP1' | 'placeP0' | 'placeP1'

@@ -1,4 +1,5 @@
-import { aiPlan } from './game/ai'
+import { aiPlan, type AiMove } from './game/ai'
+import { AZAgent, azPlan } from './game/alphazero'
 import { cloneBoard, countSquares, countTotal, countUnits, planStrikes, removeUnit } from './game/engine'
 import { RlAgent, rlPlan } from './game/rl'
 import {
@@ -106,6 +107,7 @@ let battleAnim: BattleAnim | null = null
 let rafId: number | null = null
 let aiTimer: number | null = null
 let rlAgent: RlAgent | null = null
+let azAgent: AZAgent | null = null
 
 const BATTLE_HOLD_MS = 2000
 const BATTLE_TRAVEL_MS = 900
@@ -431,19 +433,24 @@ function aiSchedule(): void {
 function runAITurn(): void {
   if (state.opponent === 'human' || state.currentPlayer !== 1 || !isPlacementTurn()) return
   const phase = state.phase === 'setup' ? 'setup' : 'place'
+  const self = state.boards[1]
+  const opp = state.settledBoards[0]
   let s = state
+  let plan: AiMove[]
   if (state.opponent === 'ai') {
-    const plan = aiPlan(state.boards[1], state.settledBoards[0], state.budget, state.maxPerCell, phase)
-    for (const move of plan) {
-      s = placeUnit(s, move.index, move.unit)
-    }
+    plan = aiPlan(self, opp, state.budget, state.maxPerCell, phase)
+  } else if (state.opponent === 'az') {
+    const agent = azAgent ?? new AZAgent()
+    agent.nPlayout = 100
+    azAgent = agent
+    plan = azPlan(agent, self, opp, state.budget, state.maxPerCell)
   } else {
     const agent = rlAgent ?? new RlAgent()
     rlAgent = agent
-    const plan = rlPlan(agent, state.boards[1], state.settledBoards[0], state.budget, state.maxPerCell, phase)
-    for (const move of plan) {
-      s = placeUnit(s, move.index, move.unit)
-    }
+    plan = rlPlan(agent, self, opp, state.budget, state.maxPerCell, phase)
+  }
+  for (const move of plan) {
+    s = placeUnit(s, move.index, move.unit)
   }
   state = commit(s)
   render()
@@ -457,6 +464,19 @@ async function loadRlPolicy(): Promise<RlAgent> {
     return RlAgent.fromJSON(json)
   } catch {
     return new RlAgent()
+  }
+}
+
+async function loadAzPolicy(): Promise<AZAgent> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}az-policy.json`, { cache: 'no-store' })
+    if (!res.ok) return new AZAgent()
+    const json = await res.json()
+    const agent = AZAgent.fromJSON(json)
+    agent.nPlayout = 100
+    return agent
+  } catch {
+    return new AZAgent()
   }
 }
 
@@ -491,6 +511,13 @@ function showTitle(): void {
   pvrlRadio.name = 'opponent'
   pvrlRadio.value = 'rl'
   pvrlLabel.append(pvrlRadio, document.createTextNode(' 单人 vs 强化学习机器人'))
+
+  const pvazLabel = document.createElement('label')
+  const pvazRadio = document.createElement('input')
+  pvazRadio.type = 'radio'
+  pvazRadio.name = 'opponent'
+  pvazRadio.value = 'az'
+  pvazLabel.append(pvazRadio, document.createTextNode(' 单人 vs AlphaZero'))
 
   const elimLabel = document.createElement('label')
   const elimRadio = document.createElement('input')
@@ -537,6 +564,8 @@ function showTitle(): void {
     document.createElement('br'),
     pvrlLabel,
     document.createElement('br'),
+    pvazLabel,
+    document.createElement('br'),
     elimLabel,
     document.createElement('br'),
     roundsLabel,
@@ -548,11 +577,19 @@ function showTitle(): void {
   form.addEventListener('submit', async (e) => {
     e.preventDefault()
     const mode: GameMode = elimRadio.checked ? 'elimination' : 'rounds'
-    const opponent: Opponent = pvpRadio.checked ? 'human' : pveRadio.checked ? 'ai' : 'rl'
+    const opponent: Opponent = pvpRadio.checked
+      ? 'human'
+      : pveRadio.checked
+        ? 'ai'
+        : pvrlRadio.checked
+          ? 'rl'
+          : 'az'
     const maxRounds = Math.max(1, Number(roundsInput.value) || 10)
     const maxPerCell = Math.max(1, Number(capInput.value) || 9)
     if (opponent === 'rl') {
       rlAgent = await loadRlPolicy()
+    } else if (opponent === 'az') {
+      azAgent = await loadAzPolicy()
     }
     state = createGame(mode, maxRounds, maxPerCell, opponent)
     render()
