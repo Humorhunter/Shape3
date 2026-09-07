@@ -37,16 +37,27 @@ function setupPlan(budget: number): AiMove[] {
   return moves
 }
 
-function pickMove(self: Board, opp: Board, maxPerCell: number): AiMove | null {
-  for (let i = 0; i < BOARD_SIZE; i += 1) {
-    if (opp[i].triangle > 0 && self[i].circle === 0 && cellTotal(self[i]) < maxPerCell) {
-      return { index: i, unit: 'circle' }
+export function bestCellFor(
+  self: Board,
+  opp: Board,
+  maxPerCell: number,
+  unit: UnitType,
+): number | null {
+  if (unit === 'circle') {
+    for (let i = 0; i < BOARD_SIZE; i += 1) {
+      if (opp[i].triangle > 0 && self[i].circle === 0 && cellTotal(self[i]) < maxPerCell) {
+        return i
+      }
     }
+    return null
   }
-  for (let i = 0; i < BOARD_SIZE; i += 1) {
-    if (opp[i].circle + opp[i].square > 0 && self[i].triangle === 0 && cellTotal(self[i]) < maxPerCell) {
-      return { index: i, unit: 'triangle' }
+  if (unit === 'triangle') {
+    for (let i = 0; i < BOARD_SIZE; i += 1) {
+      if (opp[i].circle + opp[i].square > 0 && self[i].triangle === 0 && cellTotal(self[i]) < maxPerCell) {
+        return i
+      }
     }
+    return null
   }
   let best = -1
   let bestThreat = Number.POSITIVE_INFINITY
@@ -59,7 +70,16 @@ function pickMove(self: Board, opp: Board, maxPerCell: number): AiMove | null {
       }
     }
   }
-  if (best >= 0) return { index: best, unit: 'square' }
+  return best >= 0 ? best : null
+}
+
+function pickMove(self: Board, opp: Board, maxPerCell: number): AiMove | null {
+  const circle = bestCellFor(self, opp, maxPerCell, 'circle')
+  if (circle !== null) return { index: circle, unit: 'circle' }
+  const triangle = bestCellFor(self, opp, maxPerCell, 'triangle')
+  if (triangle !== null) return { index: triangle, unit: 'triangle' }
+  const square = bestCellFor(self, opp, maxPerCell, 'square')
+  if (square !== null) return { index: square, unit: 'square' }
   return null
 }
 

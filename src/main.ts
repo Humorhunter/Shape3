@@ -1,5 +1,6 @@
 import { aiPlan } from './game/ai'
 import { cloneBoard, countSquares, countTotal, countUnits, planStrikes, removeUnit } from './game/engine'
+import { RlAgent, rlPlan, trainSelfPlay } from './game/rl'
 import {
   canCommit,
   commit,
@@ -11,6 +12,7 @@ import {
   type GameState,
   type GameMode,
   type HandoverTarget,
+  type Opponent,
 } from './game/state'
 import type { Board, Strike, UnitType } from './game/types'
 import { BoardView } from './ui/board'
@@ -103,6 +105,7 @@ const placedHistory: { index: number; unit: UnitType }[] = []
 let battleAnim: BattleAnim | null = null
 let rafId: number | null = null
 let aiTimer: number | null = null
+let rlAgent: RlAgent | null = null
 
 const BATTLE_HOLD_MS = 2000
 const BATTLE_TRAVEL_MS = 900
@@ -136,7 +139,7 @@ function isPlacementTurn(): boolean {
 }
 
 function isHumanPlacementTurn(): boolean {
-  return isPlacementTurn() && !(state.vsAI && state.currentPlayer === 1)
+  return isPlacementTurn() && !(state.opponent !== 'human' && state.currentPlayer === 1)
 }
 
 function showTwoBoards(): boolean {
@@ -266,7 +269,7 @@ function buildDisplayBoards(elapsed: number): [Board, Board] {
       if (elapsed >= land) {
         const strike = battleAnim!.strikes[s][i]
         if (strike) {
-          tgt[strike.targetIndex][strike.unit] -= 1
+          tgt[strike.targetIndex][strike.unit] -= strike.count
         }
       }
     }
@@ -426,12 +429,21 @@ function aiSchedule(): void {
 }
 
 function runAITurn(): void {
-  if (!state.vsAI || state.currentPlayer !== 1 || !isPlacementTurn()) return
+  if (state.opponent === 'human' || state.currentPlayer !== 1 || !isPlacementTurn()) return
   const phase = state.phase === 'setup' ? 'setup' : 'place'
-  const plan = aiPlan(state.boards, 1, state.budget, state.maxPerCell, phase)
   let s = state
-  for (const move of plan) {
-    s = placeUnit(s, move.index, move.unit)
+  if (state.opponent === 'ai') {
+    const plan = aiPlan(state.boards, 1, state.budget, state.maxPerCell, phase)
+    for (const move of plan) {
+      s = placeUnit(s, move.index, move.unit)
+    }
+  } else {
+    const agent = rlAgent ?? new RlAgent()
+    rlAgent = agent
+    const plan = rlPlan(agent, state.boards, 1, state.budget, state.maxPerCell, phase)
+    for (const move of plan) {
+      s = placeUnit(s, move.index, move.unit)
+    }
   }
   state = commit(s)
   render()
@@ -461,6 +473,13 @@ function showTitle(): void {
   pveRadio.name = 'opponent'
   pveRadio.value = 'ai'
   pveLabel.append(pveRadio, document.createTextNode(' 单人 vs 机器人'))
+
+  const pvrlLabel = document.createElement('label')
+  const pvrlRadio = document.createElement('input')
+  pvrlRadio.type = 'radio'
+  pvrlRadio.name = 'opponent'
+  pvrlRadio.value = 'rl'
+  pvrlLabel.append(pvrlRadio, document.createTextNode(' 单人 vs 强化学习机器人'))
 
   const elimLabel = document.createElement('label')
   const elimRadio = document.createElement('input')
@@ -505,6 +524,8 @@ function showTitle(): void {
     document.createElement('br'),
     pveLabel,
     document.createElement('br'),
+    pvrlLabel,
+    document.createElement('br'),
     elimLabel,
     document.createElement('br'),
     roundsLabel,
@@ -516,10 +537,14 @@ function showTitle(): void {
   form.addEventListener('submit', (e) => {
     e.preventDefault()
     const mode: GameMode = elimRadio.checked ? 'elimination' : 'rounds'
-    const vsAI = pveRadio.checked
+    const opponent: Opponent = pvpRadio.checked ? 'human' : pveRadio.checked ? 'ai' : 'rl'
     const maxRounds = Math.max(1, Number(roundsInput.value) || 10)
     const maxPerCell = Math.max(1, Number(capInput.value) || 9)
-    state = createGame(mode, maxRounds, maxPerCell, vsAI)
+    if (opponent === 'rl') {
+      rlAgent = new RlAgent()
+      trainSelfPlay(rlAgent, 200)
+    }
+    state = createGame(mode, maxRounds, maxPerCell, opponent)
     render()
   })
 
@@ -643,7 +668,7 @@ function render(): void {
   hideOverlay()
 
   if (state.turn === 'handover') {
-    if (state.vsAI && (state.handoverTo === 'setupP1' || state.handoverTo === 'placeP1')) {
+    if (state.opponent !== 'human' && (state.handoverTo === 'setupP1' || state.handoverTo === 'placeP1')) {
       aiSchedule()
       return
     }
