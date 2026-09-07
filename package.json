@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "train:rl": "tsx scripts/train-rl.ts"
+    "train:rl": "tsx scripts/train-rl.ts",
+    "train:az": "tsx scripts/train-az.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

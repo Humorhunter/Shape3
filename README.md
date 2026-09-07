@@ -78,6 +78,16 @@ episode   2000 | avg|TD error|=0.1296 | Q表=12950
 
 训练完成后覆盖 `public/rl-policy.json`，刷新页面即可用新策略对战。
 
+## 训练 AlphaZero 智能体（命令行）
+
+类 AlphaZero 的 **PUCT MCTS 自博弈 + 策略迭代**：MCTS 用策略作为先验搜索，训练时把策略逼近「MCTS 访问频次分布」（policy iteration）。策略保存在 `public/az-policy.json`。
+
+```bash
+npm run train:az -- --episodes 500 --playout 100 --c-puct 3 --lr-policy 0.02
+```
+
+训练时打印 `policy loss`（交叉熵）与策略表大小，作为学习进程反馈。
+
 ## 目录结构
 
 ```
@@ -87,7 +97,8 @@ src/
 │  ├─ constants.ts  常量
 │  ├─ engine.ts     纯函数规则引擎
 │  ├─ ai.ts         简易 AI 决策
-│  ├─ rl.ts         强化学习智能体（Q-learning）
+│  ├─ rl.ts         强化学习智能体（SARSA）
+│  ├─ alphazero.ts  AlphaZero 智能体（PUCT MCTS + 策略迭代）
 │  └─ state.ts      回合状态机
 ├─ ui/
 │  ├─ render.ts     Canvas 绘制
@@ -95,13 +106,16 @@ src/
 ├─ styles.css
 └─ main.ts          入口与游戏编排
 scripts/
-└─ train-rl.ts      RL 训练命令行入口
+├─ train-rl.ts      SARSA 训练命令行入口
+└─ train-az.ts      AlphaZero 训练命令行入口
 public/
-└─ rl-policy.json   RL 训练出的策略参数（线上自动加载）
+├─ rl-policy.json   SARSA 策略参数（线上自动加载）
+└─ az-policy.json   AlphaZero 策略参数
 tests/
 ├─ engine.test.ts   规则引擎测试
 ├─ ai.test.ts       AI 决策测试
 ├─ rl.test.ts       强化学习测试
+├─ alphazero.test.ts AlphaZero 测试
 └─ state.test.ts    状态机测试
 ```
 
