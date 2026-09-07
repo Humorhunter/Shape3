@@ -433,14 +433,14 @@ function runAITurn(): void {
   const phase = state.phase === 'setup' ? 'setup' : 'place'
   let s = state
   if (state.opponent === 'ai') {
-    const plan = aiPlan(state.boards, 1, state.budget, state.maxPerCell, phase)
+    const plan = aiPlan(state.boards[1], state.settledBoards[0], state.budget, state.maxPerCell, phase)
     for (const move of plan) {
       s = placeUnit(s, move.index, move.unit)
     }
   } else {
     const agent = rlAgent ?? new RlAgent()
     rlAgent = agent
-    const plan = rlPlan(agent, state.boards, 1, state.budget, state.maxPerCell, phase)
+    const plan = rlPlan(agent, state.boards[1], state.settledBoards[0], state.budget, state.maxPerCell, phase)
     for (const move of plan) {
       s = placeUnit(s, move.index, move.unit)
     }

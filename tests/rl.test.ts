@@ -5,7 +5,7 @@ import { eloFromScore, evaluate, evaluatePair, planRlMoves, playGame, trainSelfP
 describe('RL 智能体', () => {
   it('planRlMoves 尊重预算', () => {
     const agent = new RlAgent()
-    const { moves } = planRlMoves(agent, [emptyBoard(), emptyBoard()], 1, 3, 9, false)
+    const { moves } = planRlMoves(agent, emptyBoard(), emptyBoard(), 3, 9, false)
     expect(moves).toHaveLength(3)
     for (const m of moves) {
       expect(m.index).toBeGreaterThanOrEqual(0)

@@ -15,9 +15,9 @@ function bucket(n: number): number {
   return 4
 }
 
-export function localKey(boards: [Board, Board], ai: PlayerIndex, cell: number, budget: number): string {
-  const s = boards[ai][cell]
-  const o = boards[1 - ai][cell]
+export function localKey(self: Board, opp: Board, cell: number, budget: number): string {
+  const s = self[cell]
+  const o = opp[cell]
   return [
     bucket(s.circle),
     bucket(s.triangle),
@@ -52,13 +52,12 @@ export class RlAgent {
   }
 
   chooseLocal(
-    boards: [Board, Board],
-    ai: PlayerIndex,
+    self: Board,
+    opp: Board,
     budget: number,
     maxPerCell: number,
     explore: boolean,
   ): { cell: number; unit: number; key: string } | null {
-    const self = boards[ai]
     const legalCells: number[] = []
     for (let cell = 0; cell < N_CELLS; cell += 1) {
       if (cellTotal(self[cell]) < maxPerCell) legalCells.push(cell)
@@ -68,12 +67,12 @@ export class RlAgent {
     if (explore && Math.random() < this.epsilon) {
       const cell = legalCells[Math.floor(Math.random() * legalCells.length)]
       const unit = Math.floor(Math.random() * UNIT_TYPES.length)
-      return { cell, unit, key: localKey(boards, ai, cell, budget) }
+      return { cell, unit, key: localKey(self, opp, cell, budget) }
     }
 
     let best: { cell: number; unit: number; key: string; q: number } | null = null
     for (const cell of legalCells) {
-      const key = localKey(boards, ai, cell, budget)
+      const key = localKey(self, opp, cell, budget)
       const v = this.values(key)
       for (let unit = 0; unit < UNIT_TYPES.length; unit += 1) {
         if (!best || v[unit] > best.q) {
@@ -128,21 +127,20 @@ function sarsaUpdate(agent: RlAgent, key: string, unit: number, target: number):
 
 export function planRlMoves(
   agent: RlAgent,
-  boards: [Board, Board],
-  ai: PlayerIndex,
+  self: Board,
+  opp: Board,
   budget: number,
   maxPerCell: number,
   explore: boolean,
 ): { moves: AiMove[]; steps: Step[] } {
-  const self = boards[ai].map((c) => ({ ...c }))
-  const curBoards: [Board, Board] = ai === 0 ? [self, boards[1]] : [boards[0], self]
+  const s = self.map((c) => ({ ...c }))
   const moves: AiMove[] = []
   const steps: Step[] = []
   let b = budget
   while (b > 0) {
-    const choice = agent.chooseLocal(curBoards, ai, b, maxPerCell, explore)
+    const choice = agent.chooseLocal(s, opp, b, maxPerCell, explore)
     if (!choice) break
-    self[choice.cell][UNIT_TYPES[choice.unit]] += 1
+    s[choice.cell][UNIT_TYPES[choice.unit]] += 1
     moves.push({ index: choice.cell, unit: UNIT_TYPES[choice.unit] })
     steps.push({ key: choice.key, unit: choice.unit })
     b -= 1
@@ -152,25 +150,24 @@ export function planRlMoves(
 
 function runPhase(
   agent: RlAgent | null,
-  boards: [Board, Board],
-  ai: PlayerIndex,
+  self: Board,
+  opp: Board,
   budget: number,
   maxPerCell: number,
   explore: boolean,
   phase: 'setup' | 'place',
-): { boards: [Board, Board]; steps: Step[] } {
+): { next: Board; steps: Step[] } {
+  let next = self
+  let steps: Step[] = []
   if (!agent) {
-    const moves = aiPlan(boards, ai, budget, maxPerCell, phase)
-    let next = boards[ai]
+    const moves = aiPlan(self, opp, budget, maxPerCell, phase)
     for (const m of moves) next = place(next, m.index, m.unit, maxPerCell)
-    const nb: [Board, Board] = ai === 0 ? [next, boards[1]] : [boards[0], next]
-    return { boards: nb, steps: [] }
+  } else {
+    const res = planRlMoves(agent, self, opp, budget, maxPerCell, explore)
+    for (const m of res.moves) next = place(next, m.index, m.unit, maxPerCell)
+    steps = res.steps
   }
-  const { moves, steps } = planRlMoves(agent, boards, ai, budget, maxPerCell, explore)
-  let next = boards[ai]
-  for (const m of moves) next = place(next, m.index, m.unit, maxPerCell)
-  const nb: [Board, Board] = ai === 0 ? [next, boards[1]] : [boards[0], next]
-  return { boards: nb, steps }
+  return { next, steps }
 }
 
 function terminalRewardFor(outcome: Outcome, p: PlayerIndex): number {
@@ -212,11 +209,12 @@ export function playGame(config: {
   const maxPerCell = config.maxPerCell ?? 9
 
   let boards: [Board, Board] = [emptyBoard(), emptyBoard()]
+  let settled: [Board, Board] = [emptyBoard(), emptyBoard()]
 
-  const setup0 = runPhase(config.p0Agent, boards, 0, 9, maxPerCell, config.p0Explore, 'setup')
-  boards = setup0.boards
-  const setup1 = runPhase(config.p1Agent, boards, 1, 9, maxPerCell, config.p1Explore, 'setup')
-  boards = setup1.boards
+  const setup0 = runPhase(config.p0Agent, boards[0], settled[1], 9, maxPerCell, config.p0Explore, 'setup')
+  boards = [setup0.next, boards[1]]
+  const setup1 = runPhase(config.p1Agent, boards[1], settled[0], 9, maxPerCell, config.p1Explore, 'setup')
+  boards = [boards[0], setup1.next]
   let chain0 = setup0.steps
   let chain1 = setup1.steps
 
@@ -231,6 +229,7 @@ export function playGame(config: {
     const reward1 = battleRewardFor(prev, resolvedBoards, 1) + (terminal ? terminalRewardFor(outcome, 1) : 0)
 
     boards = resolvedBoards
+    settled = [cloneBoard(resolvedBoards[0]), cloneBoard(resolvedBoards[1])]
     if (terminal) {
       processChain(config.p0Agent, chain0, reward0, null)
       processChain(config.p1Agent, chain1, reward1, null)
@@ -238,15 +237,15 @@ export function playGame(config: {
     }
 
     const budget0 = countSquares(boards[0])
-    const phase0 = runPhase(config.p0Agent, boards, 0, budget0, maxPerCell, config.p0Explore, 'place')
+    const phase0 = runPhase(config.p0Agent, boards[0], settled[1], budget0, maxPerCell, config.p0Explore, 'place')
     processChain(config.p0Agent, chain0, reward0, phase0.steps[0] ?? null)
-    boards = phase0.boards
+    boards = [phase0.next, boards[1]]
     chain0 = phase0.steps
 
     const budget1 = countSquares(boards[1])
-    const phase1 = runPhase(config.p1Agent, boards, 1, budget1, maxPerCell, config.p1Explore, 'place')
+    const phase1 = runPhase(config.p1Agent, boards[1], settled[0], budget1, maxPerCell, config.p1Explore, 'place')
     processChain(config.p1Agent, chain1, reward1, phase1.steps[0] ?? null)
-    boards = phase1.boards
+    boards = [boards[0], phase1.next]
     chain1 = phase1.steps
   }
 
@@ -332,11 +331,11 @@ export function eloFromScore(score: number, total: number): number {
 
 export function rlPlan(
   agent: RlAgent,
-  boards: [Board, Board],
-  ai: PlayerIndex,
+  self: Board,
+  opp: Board,
   budget: number,
   maxPerCell: number,
   _phase?: 'setup' | 'place',
 ): AiMove[] {
-  return planRlMoves(agent, boards, ai, budget, maxPerCell, false).moves
+  return planRlMoves(agent, self, opp, budget, maxPerCell, false).moves
 }

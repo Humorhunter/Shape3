@@ -1,6 +1,6 @@
 import { BOARD_SIZE } from './constants'
 import { cellTotal } from './engine'
-import type { Board, PlayerIndex, UnitType } from './types'
+import type { Board, UnitType } from './types'
 
 export interface AiMove {
   index: number
@@ -84,8 +84,8 @@ function pickMove(self: Board, opp: Board, maxPerCell: number): AiMove | null {
 }
 
 export function aiPlan(
-  boards: [Board, Board],
-  ai: PlayerIndex,
+  self: Board,
+  opp: Board,
   budget: number,
   maxPerCell: number,
   phase: 'setup' | 'place',
@@ -93,15 +93,14 @@ export function aiPlan(
   if (phase === 'setup') {
     return setupPlan(budget)
   }
-  const self = boards[ai].map((c) => ({ ...c }))
-  const opp = boards[1 - ai]
+  const s = self.map((c) => ({ ...c }))
   const moves: AiMove[] = []
   let remaining = budget
   while (remaining > 0) {
-    const move = pickMove(self, opp, maxPerCell)
+    const move = pickMove(s, opp, maxPerCell)
     if (!move) break
     moves.push(move)
-    self[move.index][move.unit] += 1
+    s[move.index][move.unit] += 1
     remaining -= 1
   }
   return moves

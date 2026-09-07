@@ -24,6 +24,7 @@ export interface GameState {
   maxPerCell: number
   round: number
   boards: [Board, Board]
+  settledBoards: [Board, Board]
   preBoards: [Board, Board] | null
   currentPlayer: PlayerIndex
   turn: Turn
@@ -44,6 +45,7 @@ export function initialState(): GameState {
     maxPerCell: DEFAULT_MAX_PER_CELL,
     round: 1,
     boards: [emptyBoard(), emptyBoard()],
+    settledBoards: [emptyBoard(), emptyBoard()],
     preBoards: null,
     currentPlayer: 0,
     turn: 'place',
@@ -116,6 +118,7 @@ function enterBattle(state: GameState): GameState {
     phase: 'battle',
     turn: 'place',
     boards: [p0, p1],
+    settledBoards: [p0.map((c) => ({ ...c })), p1.map((c) => ({ ...c }))],
     preBoards,
     report,
   }
